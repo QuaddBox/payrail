@@ -18,12 +18,11 @@ Before clicking "Deploy", you **must** add your environment variables. Vercel ne
 
 Copy these from your local `.env.local` and paste them into the **Environment Variables** section in Vercel:
 
-| Key                             | Value                                                                                              |
-| :------------------------------ | :------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | _Your Supabase URL_                                                                                |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | _Your Supabase Anon Key_                                                                           |
-| `SUPABASE_SERVICE_ROLE_KEY`     | _Your Supabase Service Role Key_                                                                   |
-| `NEXT_PUBLIC_SITE_URL`          | `https://your-project-name.vercel.app` (Add this _after_ it's generated, or use the temporary one) |
+| Key                             | Value                            |
+| :------------------------------ | :------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | _Your Supabase URL_              |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | _Your Supabase Anon Key_         |
+| `SUPABASE_SERVICE_ROLE_KEY`     | _Your Supabase Service Role Key_ |
 
 ### 3. Deploy
 
