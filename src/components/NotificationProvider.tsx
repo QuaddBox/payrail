@@ -43,7 +43,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     <NotificationContext.Provider value={{ showNotification, hideNotification }}>
       {children}
       <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-3 w-full max-w-sm pointer-events-none">
-        <AnimatePresence mode="multiple">
+        <AnimatePresence>
           {notifications.map((n) => (
             <motion.div
               key={n.id}
