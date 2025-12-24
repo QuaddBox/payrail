@@ -31,11 +31,13 @@ Copy these from your local `.env.local` and paste them into the **Environment Va
 
 ### 4. Update Supabase Redirects (Crucial! ⚠️)
 
-For your email confirmation links to work in production, you must tell Supabase about your new URL:
+For your email confirmation links to work in both production and locally, you must tell Supabase about your URLs:
 
-1. Go to your **Supabase Dashboard** -> **Authentication** -> **URL Configuration**.
-2. Update **Site URL** to your new Vercel URL.
-3. Add your Vercel URL to **Redirect URLs** (e.g., `https://your-app.vercel.app/**`).
+1.  Go to your **Supabase Dashboard** -> **Authentication** -> **URL Configuration**.
+2.  Update **Site URL** to your new Vercel URL (e.g., `https://payrail.vercel.app`).
+3.  Add the following to **Redirect URLs**:
+    - `https://your-app.vercel.app/**` (Production)
+    - `http://localhost:3000/**` (Local Development) — **Add this to keep local signups working!**
 
 ---
 
