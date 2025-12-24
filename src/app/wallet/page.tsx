@@ -1,4 +1,11 @@
-import { WalletConnect } from "@/components/WalletConnect";
+'use client'
+
+import dynamic from 'next/dynamic'
+
+const WalletConnect = dynamic(
+  () => import('@/components/WalletConnect').then((mod) => mod.WalletConnect),
+  { ssr: false }
+)
 
 export default function WalletPage() {
   return (

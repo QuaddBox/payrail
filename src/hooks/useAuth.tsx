@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import { User } from '@supabase/supabase-js'
 
@@ -24,38 +24,67 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [role, setRole] = useState<UserRole>(null)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
+  
+  // Use useMemo to prevent creating a new client every render
+  const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
-      if (user) {
-        // In Task 1.3 we will fetch role from 'profiles' table
-        // For now, we just set loading to false
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        
-        if (profile) setRole(profile.role)
+    const fetchProfileWithRetry = async (userId: string, retries = 3): Promise<UserRole | null> => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .maybeSingle()
+          
+          if (profile) {
+            console.log(`useAuth: Profile found on attempt ${i + 1}:`, profile.role)
+            return profile.role
+          }
+          
+          if (i < retries - 1) {
+            console.log(`useAuth: Profile not found, retrying... (${i + 1}/${retries})`)
+            await new Promise(resolve => setTimeout(resolve, 1500)) // Wait 1.5s
+          }
+        } catch (err) {
+          console.error("useAuth: Profile fetch error:", err)
+        }
       }
-      setLoading(false)
+      return null
+    }
+
+    const fetchUser = async () => {
+      try {
+        setLoading(true)
+        console.log("useAuth: Initializing session...")
+        const { data: { user } } = await supabase.auth.getUser()
+        setUser(user)
+        
+        if (user) {
+          const roleResult = await fetchProfileWithRetry(user.id)
+          setRole(roleResult)
+        }
+      } catch (err) {
+        console.error("useAuth: Initial fetch error:", err)
+      } finally {
+        setLoading(false)
+      }
     }
 
     fetchUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', session.user.id)
-            .single()
-          if (profile) setRole(profile.role)
+        console.log("useAuth: Event:", event, "User:", session?.user?.id)
+        const currentUser = session?.user ?? null
+        setUser(currentUser)
+        
+        if (currentUser) {
+          // If we already have a role, don't necessarily re-fetch unless it's a forced change
+          // But for robustness during signup/confirmation, let's fetch
+          const roleResult = await fetchProfileWithRetry(currentUser.id)
+          setRole(roleResult)
         } else {
           setRole(null)
         }
@@ -63,7 +92,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [supabase])
 
   const signOut = async () => {
