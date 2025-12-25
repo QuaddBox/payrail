@@ -20,6 +20,8 @@ import { useNotification } from "@/components/NotificationProvider"
 import { AddTeamMemberModal } from "@/components/dashboard/ActionModals"
 import { deleteTeamMember } from "@/app/actions/team"
 import { useRouter } from "next/navigation"
+import { RecipientDetailsModal } from "./RecipientDetailsModal"
+import { History as HistoryIcon } from "lucide-react"
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -42,6 +44,7 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
   const [searchQuery, setSearchQuery] = React.useState("")
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false)
   const [editingMember, setEditingMember] = React.useState<any>(null)
+  const [trackingRecipient, setTrackingRecipient] = React.useState<any>(null)
   const [currentPage, setCurrentPage] = React.useState(1)
   const itemsPerPage = 5
   const { showNotification } = useNotification()
@@ -96,6 +99,12 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
           setEditingMember(null)
           router.refresh()
         }} 
+      />
+
+      <RecipientDetailsModal
+        isOpen={!!trackingRecipient}
+        recipient={trackingRecipient}
+        onClose={() => setTrackingRecipient(null)}
       />
 
       <motion.div variants={itemVariants}>
@@ -177,6 +186,14 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                           <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => setTrackingRecipient(f)}
+                           >
+                              <HistoryIcon className="h-3.5 w-3.5" />
+                           </Button>
                            <Button 
                               variant="ghost" 
                               size="icon" 

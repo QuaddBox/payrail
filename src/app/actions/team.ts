@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase-server"
 import { revalidatePath } from "next/cache"
+import { sendOnboardingEmail } from "./notifications"
 
 export async function getTeamMembers() {
   const supabase = await createClient()
@@ -47,6 +48,17 @@ export async function addTeamMember(member: {
 
   if (error) return { error: error.message }
   
+  // Trigger email notification
+  if (member.email) {
+    await sendOnboardingEmail({
+      name: member.name,
+      email: member.email,
+      rate: member.rate || "Not specified",
+      frequency: member.payment_frequency,
+      startDate: member.contract_start
+    })
+  }
+  
   revalidatePath('/dashboard/recipients')
   return { success: true }
 }
@@ -83,6 +95,6 @@ export async function deleteTeamMember(id: string) {
 
   if (error) return { error: error.message }
 
-  revalidatePath('/dashboard/freelancers')
+  revalidatePath('/dashboard/recipients')
   return { success: true }
 }
