@@ -69,7 +69,12 @@ export function OrganizationClient({
     }
   }
 
+  const isLocked = !!initialOrgName
+  const hasCurrencyChanged = currency !== (initialCurrency || "STX")
+
   const handleSaveOrganization = async () => {
+    if (isLocked && !hasCurrencyChanged) return
+    
     if (!orgName) {
       showNotification("error", "Please enter an organization name")
       return
@@ -81,8 +86,6 @@ export function OrganizationClient({
       // 1. Save Off-Chain to Supabase
       const result = await updateProfile({
         organization: orgName,
-        // We'll update the updateProfile action to support these fields soon
-        // For now, let's assume it supports them or we'll add them to auth.ts
         country,
         default_currency: currency,
         organization_type: orgType
@@ -93,16 +96,18 @@ export function OrganizationClient({
         return
       }
 
-      // 2. Save On-Chain if name changed or doesn't exist on-chain
-      // We only do this if connected and not already created on-chain
-      if (isConnected && !hasOrg) {
+      // 2. Save On-Chain if not already created
+      if (isConnected && !hasOrg && !isLocked) {
         await createOrganization(orgName)
         showNotification("success", "Organization saved and broadcasted on-chain")
       } else {
         showNotification("success", "Organization details updated")
       }
-    } catch (err) {
-      showNotification("error", "Failed to update organization")
+
+      // Refresh to sync state
+      window.location.reload()
+    } catch (err: any) {
+      showNotification("error", "Failed to update organization", err.message || "An unexpected error occurred.")
     } finally {
       setIsSubmitting(false)
     }
@@ -119,8 +124,15 @@ export function OrganizationClient({
         <div className="lg:col-span-2 space-y-6">
           <Card className="border-none shadow-sm">
             <CardHeader>
-              <CardTitle>Business Identity</CardTitle>
-              <CardDescription>This information is stored off-chain and used for display purposes.</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                Business Identity
+                {isLocked && <ShieldCheck className="h-5 w-5 text-green-500" />}
+              </CardTitle>
+              <CardDescription>
+                {isLocked 
+                  ? "Identity details are locked. You can only update your default payout currency." 
+                  : "This information is stored off-chain and used for display purposes."}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -133,6 +145,7 @@ export function OrganizationClient({
                     className="pl-10 rounded-xl" 
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
+                    disabled={isLocked || isSubmitting}
                   />
                 </div>
               </div>
@@ -142,7 +155,11 @@ export function OrganizationClient({
                   <Label htmlFor="country">Country</Label>
                   <div className="relative">
                     <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
-                    <Select value={country} onValueChange={setCountry}>
+                    <Select 
+                      value={country} 
+                      onValueChange={setCountry}
+                      disabled={isLocked || isSubmitting}
+                    >
                       <SelectTrigger className="pl-10 rounded-xl">
                         <SelectValue placeholder="Select Country" />
                       </SelectTrigger>
@@ -158,7 +175,11 @@ export function OrganizationClient({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="currency">Default Payout Currency</Label>
-                  <Select value={currency} onValueChange={setCurrency}>
+                  <Select 
+                    value={currency} 
+                    onValueChange={setCurrency}
+                    disabled={isSubmitting} // Keep enabled even if isLocked
+                  >
                     <SelectTrigger className="rounded-xl font-bold bg-accent/30">
                       <SelectValue placeholder="Select Currency" />
                     </SelectTrigger>
@@ -172,7 +193,11 @@ export function OrganizationClient({
 
               <div className="space-y-2">
                 <Label htmlFor="orgType">Organization Type (Optional)</Label>
-                <Select value={orgType} onValueChange={setOrgType}>
+                <Select 
+                  value={orgType} 
+                  onValueChange={setOrgType}
+                  disabled={isLocked || isSubmitting}
+                >
                   <SelectTrigger className="rounded-xl">
                     <SelectValue placeholder="Select Type" />
                   </SelectTrigger>
@@ -186,20 +211,22 @@ export function OrganizationClient({
                 </Select>
               </div>
 
-              <div className="pt-2">
-                <Button 
-                  onClick={handleSaveOrganization}
-                  disabled={isSubmitting}
-                  className="rounded-xl px-8 shadow-lg shadow-primary/20 bg-primary font-bold"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  {hasOrg ? "Update Details" : "Save & Register"}
-                </Button>
-              </div>
+              {(!isLocked || hasCurrencyChanged) && (
+                <div className="pt-2">
+                  <Button 
+                    onClick={handleSaveOrganization}
+                    disabled={isSubmitting}
+                    className="rounded-xl px-8 shadow-lg shadow-primary/20 bg-primary font-bold"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    {isLocked ? "Update Currency" : (hasOrg ? "Update Details" : "Save & Register")}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 

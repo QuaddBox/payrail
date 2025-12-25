@@ -132,32 +132,39 @@ export async function updateProfile(formData: {
       return { error: "Not authenticated" }
     }
 
-    const { error: authError } = await supabase.auth.updateUser({
-      data: {
-        full_name: formData.full_name,
-        organization: formData.organization,
-      }
-    })
+    // Only update auth user metadata if fields are provided
+    if (formData.full_name !== undefined || formData.organization !== undefined) {
+      const authUpdates: any = {}
+      if (formData.full_name !== undefined) authUpdates.full_name = formData.full_name
+      if (formData.organization !== undefined) authUpdates.organization = formData.organization
 
-    if (authError) {
-      return { error: authError.message }
+      const { error: authError } = await supabase.auth.updateUser({
+        data: authUpdates
+      })
+
+      if (authError) {
+        return { error: `Auth Update Error: ${authError.message}` }
+      }
     }
 
-    // Also update the profiles table
+    // Prepare profile updates
+    const profileUpdates: any = {
+      updated_at: new Date().toISOString(),
+    }
+    
+    if (formData.full_name !== undefined) profileUpdates.full_name = formData.full_name
+    if (formData.organization !== undefined) profileUpdates.organization_name = formData.organization
+    if (formData.country !== undefined) profileUpdates.country = formData.country
+    if (formData.default_currency !== undefined) profileUpdates.default_currency = formData.default_currency
+    if (formData.organization_type !== undefined) profileUpdates.organization_type = formData.organization_type
+
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({
-        full_name: formData.full_name,
-        organization_name: formData.organization,
-        country: formData.country,
-        default_currency: formData.default_currency,
-        organization_type: formData.organization_type,
-        updated_at: new Date().toISOString(),
-      })
+      .update(profileUpdates)
       .eq('id', user.id)
 
     if (profileError) {
-      return { error: profileError.message }
+      return { error: `Profile Update Error: ${profileError.message}` }
     }
 
     return { success: true }
