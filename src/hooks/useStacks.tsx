@@ -138,7 +138,7 @@ export function useStacks() {
 
     return StacksConnect.openSTXTransfer({
       recipient,
-      amount: uintCV(amountUSTX) as any,
+      amount: BigInt(amountUSTX),
       network,
       anchorMode: AnchorMode.Any,
       onFinish: (data: any) => {

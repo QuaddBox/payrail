@@ -97,30 +97,32 @@ export function BusinessDashboard({ initialOrgName }: { initialOrgName?: string 
               )}
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            {!isConnected && (
-              <Button onClick={connectWallet} variant="outline" className="rounded-xl border-primary text-primary">
-                Connect Wallet
+          {isMounted && (
+            <div className="flex items-center gap-3">
+              {!isConnected && (
+                <Button onClick={connectWallet} variant="outline" className="rounded-xl border-primary text-primary">
+                  Connect Wallet
+                </Button>
+              )}
+              <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="rounded-xl h-10 px-6 font-semibold"
+                  onClick={() => setIsSendModalOpen(true)}
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Transfer
               </Button>
-            )}
-            <Button 
-                variant="outline" 
-                size="sm" 
-                className="rounded-xl h-10 px-6 font-semibold"
-                onClick={() => setIsSendModalOpen(true)}
-            >
-              <Send className="mr-2 h-4 w-4" />
-              Transfer
-            </Button>
-            <Button 
-                size="sm" 
-                className="rounded-xl h-10 px-6 font-bold shadow-lg shadow-primary/20"
-                onClick={() => setIsAddModalOpen(true)}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Member
-            </Button>
-          </div>
+              <Button 
+                  size="sm" 
+                  className="rounded-xl h-10 px-6 font-bold shadow-lg shadow-primary/20"
+                  onClick={() => setIsAddModalOpen(true)}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Member
+              </Button>
+            </div>
+          )}
         </motion.div>
 
         {/* Stats Grid - Wrapped in Suspense if we had a data-fetching parent, but for now we use skeletons in Client */}
