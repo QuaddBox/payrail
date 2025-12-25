@@ -40,10 +40,15 @@ const calculateNextRun = (lastPayout: string | null, frequency: string) => {
 
 export default function ScheduledPayrollPage({ initialRecipients = [] }: { initialRecipients: any[] }) {
   const { isConnected, connectWallet, executePayroll, transferBTC, getSTXPrice, getBTCPrice } = useStacks()
-  const { showNotification } = useNotification()
   const router = useRouter()
+  const [recipients, setRecipients] = React.useState(initialRecipients)
   const [isSubmitting, setIsSubmitting] = React.useState<string | null>(null)
   const [isMounted, setIsMounted] = React.useState(false)
+
+  // Keep local state in sync with initialRecipients from server
+  React.useEffect(() => {
+    setRecipients(initialRecipients)
+  }, [initialRecipients])
   const [currency, setCurrency] = React.useState<'STX' | 'BTC'>('STX')
   const [stxPrice, setStxPrice] = React.useState(0)
   const [btcPrice, setBtcPrice] = React.useState(0)
@@ -60,7 +65,7 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
 
   const currentPrice = currency === 'STX' ? stxPrice : btcPrice
   
-  const schedules = initialRecipients.map(r => {
+  const schedules = recipients.map(r => {
     const { date, isDue, alreadyPaid, isInitial } = calculateNextRun(r.last_payout_at, r.payment_frequency)
     return {
       id: r.id,
@@ -71,7 +76,8 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
       frequency: r.payment_frequency.charAt(0).toUpperCase() + r.payment_frequency.slice(1),
       nextRun: isInitial ? "Initial Payment Due" : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       status: isDue ? "Ready" : "Scheduled",
-      alreadyPaid
+      alreadyPaid,
+      lastPayout: r.last_payout_at
     }
   })
 
@@ -85,8 +91,15 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
       setIsSubmitting(item.id)
       
       const onSuccess = async () => {
+        const now = new Date().toISOString()
+        
+        // Optimistic UI update
+        setRecipients(prev => prev.map(r => 
+          r.id === item.id ? { ...r, last_payout_at: now } : r
+        ))
+
         await recordPayout(item.id)
-        showNotification('success', 'Payout Recorded', `Database updated for ${item.recipient}`)
+        showNotification('success', 'Payout Recorded', `Schedule updated for ${item.recipient}`)
         router.refresh()
       }
 
@@ -165,6 +178,11 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
                         <Clock className="h-3 w-3" />
                         Next Run: {item.nextRun}
                       </span>
+                      {item.lastPayout && (
+                        <span className="text-[10px] bg-accent/30 px-1.5 py-0.5 rounded uppercase font-bold text-muted-foreground">
+                          Last Paid: {new Date(item.lastPayout).toLocaleDateString()}
+                        </span>
+                      )}
                       <span className="font-bold text-foreground">
                           ${item.amount.toLocaleString()}
                       </span>
