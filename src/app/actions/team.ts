@@ -98,3 +98,21 @@ export async function deleteTeamMember(id: string) {
   revalidatePath('/dashboard/recipients')
   return { success: true }
 }
+
+export async function recordPayout(id: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: "Not authenticated" }
+
+  const { error } = await supabase
+    .from('team_members')
+    .update({ last_payout_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('organization_id', user.id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/dashboard/payroll/scheduled')
+  return { success: true }
+}

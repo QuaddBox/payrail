@@ -7,10 +7,36 @@ import { Button } from "@/components/ui/button"
 import { useStacks } from "@/hooks/useStacks"
 import { useNotification } from "@/components/NotificationProvider"
 import { Loader2 } from "lucide-react"
+import { recordPayout } from "@/app/actions/team"
+import { useRouter } from "next/navigation"
+
+const calculateNextRun = (lastPayout: string | null, frequency: string) => {
+  const now = new Date()
+  if (!lastPayout) return { date: now, isDue: true }
+
+  const last = new Date(lastPayout)
+  const next = new Date(last)
+
+  switch (frequency.toLowerCase()) {
+    case 'hourly': next.setHours(last.getHours() + 1); break
+    case 'daily': next.setDate(last.getDate() + 1); break
+    case 'weekly': next.setDate(last.getDate() + 7); break
+    case 'monthly': next.setMonth(last.getMonth() + 1); break
+    case 'yearly': next.setFullYear(last.getFullYear() + 1); break
+    default: next.setMonth(last.getMonth() + 1)
+  }
+
+  return { 
+    date: next, 
+    isDue: now >= next,
+    alreadyPaid: now < next 
+  }
+}
 
 export default function ScheduledPayrollPage({ initialRecipients = [] }: { initialRecipients: any[] }) {
   const { isConnected, connectWallet, executePayroll, transferBTC, getSTXPrice, getBTCPrice } = useStacks()
   const { showNotification } = useNotification()
+  const router = useRouter()
   const [isSubmitting, setIsSubmitting] = React.useState<string | null>(null)
   const [isMounted, setIsMounted] = React.useState(false)
   const [currency, setCurrency] = React.useState<'STX' | 'BTC'>('STX')
@@ -29,16 +55,20 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
 
   const currentPrice = currency === 'STX' ? stxPrice : btcPrice
   
-  const schedules = initialRecipients.map(r => ({
-    id: r.id,
-    recipient: r.name,
-    address: r.wallet_address,
-    btc_address: r.btc_address,
-    amount: parseFloat(r.rate) || 0,
-    frequency: r.payment_frequency.charAt(0).toUpperCase() + r.payment_frequency.slice(1),
-    nextRun: "Calculating...", // Simple placeholder for MVP
-    status: "Ready"
-  }))
+  const schedules = initialRecipients.map(r => {
+    const { date, isDue, alreadyPaid } = calculateNextRun(r.last_payout_at, r.payment_frequency)
+    return {
+      id: r.id,
+      recipient: r.name,
+      address: r.wallet_address,
+      btc_address: r.btc_address,
+      amount: parseFloat(r.rate) || 0,
+      frequency: r.payment_frequency.charAt(0).toUpperCase() + r.payment_frequency.slice(1),
+      nextRun: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      status: isDue ? "Ready" : "Scheduled",
+      alreadyPaid
+    }
+  })
 
   const handleRunNow = async (item: any) => {
     if (!isConnected) {
@@ -64,6 +94,11 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
             await transferBTC(btcAddress, amountInBtc)
         }
       }
+
+      // Record successful payout in database
+      await recordPayout(item.id)
+      showNotification('success', 'Payout Recorded', `Database updated for ${item.recipient}`)
+      router.refresh()
     } catch (err: any) {
       // Handled by useStacks
     } finally {
@@ -136,13 +171,19 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 w-full md:w-auto mt-4 md:mt-0">
-                    {item.status === "Ready" && (
-                      <div className="flex items-center gap-2 mr-4 text-amber-600 animate-pulse">
-                        <AlertCircle className="h-4 w-4" />
-                        <span className="text-xs font-bold uppercase tracking-tighter">Action Required</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-3 w-full md:w-auto mt-4 md:mt-0">
+                      {item.status === "Ready" && (
+                        <div className="flex items-center gap-2 mr-4 text-amber-600 animate-pulse">
+                          <AlertCircle className="h-4 w-4" />
+                          <span className="text-xs font-bold uppercase tracking-tighter">Action Required</span>
+                        </div>
+                      )}
+                      {item.alreadyPaid && (
+                        <div className="flex items-center gap-2 mr-4 text-green-600">
+                          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                          <span className="text-xs font-bold uppercase tracking-tighter">Paid / Processing</span>
+                        </div>
+                      )}
                     <Button 
                       className="flex-1 md:flex-none rounded-xl font-bold bg-primary px-8"
                       onClick={() => handleRunNow(item)}
