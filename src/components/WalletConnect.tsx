@@ -1,57 +1,57 @@
 'use client'
 
-import { showConnect } from '@stacks/connect'
-import { STACKS_TESTNET, STACKS_MAINNET } from '@stacks/network'
+import * as React from 'react'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { useStacks } from '@/hooks/useStacks'
 import { Button } from '@/components/ui/button'
 import { Wallet, CheckCircle2, Loader2, Link2Off } from 'lucide-react'
 
 export const WalletConnect = () => {
-  const [address, setAddress] = useState<string | null>(null)
-  const [syncing, setSyncing] = useState(false)
   const { user } = useAuth()
-  const supabase = createClient()
-  
-  const isTestnet = process.env.NEXT_PUBLIC_STACKS_NETWORK === 'testnet'
-  const network = isTestnet ? STACKS_TESTNET : STACKS_MAINNET
- 
-  const connectWallet = () => {
-    showConnect({
-      appDetails: {
-        name: 'Payrail',
-        icon: '/favicon.ico',
-      },
-      onFinish: async (payload) => {
-        const userData = payload.userSession.loadUserData()
-        const stxAddress = isTestnet 
-          ? userData.profile.stxAddress.testnet 
-          : userData.profile.stxAddress.mainnet
-        setAddress(stxAddress)
-        
-        if (user) {
+  const supabase = React.useMemo(() => createClient(), [])
+  const { isConnected, address: stacksAddress, connectWallet, disconnectWallet } = useStacks()
+  const [syncing, setSyncing] = useState(false)
+
+  // Use an effect to sync the stacksAddress to Supabase when it changes
+  React.useEffect(() => {
+    const syncWallet = async () => {
+      if (user && stacksAddress && !syncing) {
+        try {
+          // Check if already synced to avoid loops
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('wallet_address')
+            .eq('id', user.id)
+            .single()
+
+          if (profile?.wallet_address === stacksAddress) {
+            return
+          }
+
           setSyncing(true)
           const { error } = await supabase
             .from('profiles')
-            .update({ wallet_address: stxAddress })
+            .update({ wallet_address: stacksAddress })
             .eq('id', user.id)
           
           if (error) {
             console.error('Error syncing wallet address:', error.message)
           }
+        } catch (err) {
+          console.error('Sync error:', err)
+        } finally {
           setSyncing(false)
         }
-      },
-      onCancel: () => {
-        console.log('Wallet connection cancelled')
-      },
-    })
-  }
+      }
+    }
+    syncWallet()
+  }, [stacksAddress, user, supabase])
 
   return (
     <div className="w-full">
-      {!address ? (
+      {!isConnected ? (
         <Button
           onClick={connectWallet}
           className="w-full h-14 rounded-2xl text-lg font-bold shadow-xl shadow-primary/20 group"
@@ -69,7 +69,7 @@ export const WalletConnect = () => {
               <p className="font-bold text-sm">
                 {syncing ? 'Syncing Address...' : 'Wallet Linked'}
               </p>
-              <p className="text-xs font-mono text-muted-foreground truncate">{address}</p>
+              <p className="text-xs font-mono text-muted-foreground truncate">{stacksAddress}</p>
             </div>
           </div>
           
@@ -77,7 +77,7 @@ export const WalletConnect = () => {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => setAddress(null)}
+              onClick={disconnectWallet}
               className="text-red-500 hover:text-red-600 hover:bg-red-50 w-full rounded-xl h-10"
             >
               <Link2Off className="mr-2 h-4 w-4" />

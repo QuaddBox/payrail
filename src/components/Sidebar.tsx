@@ -10,9 +10,12 @@ import {
   History, 
   Settings, 
   Wallet,
+  Building2,
+  Calendar,
   ChevronLeft,
   ChevronRight,
-  LogOut
+  LogOut,
+  ExternalLink
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -39,8 +42,10 @@ export function Sidebar() {
 
   const businessLinks: SidebarItem[] = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Freelancers', href: '/dashboard/freelancers', icon: Users },
-    { name: 'Payroll', href: '/dashboard/payroll', icon: Send },
+    { name: 'Organization', href: '/dashboard/organization', icon: Building2 },
+    { name: 'Run Payroll', href: '/dashboard/payroll/create', icon: Send },
+    { name: 'Scheduled', href: '/dashboard/payroll/scheduled', icon: Calendar },
+    { name: 'Recipients', href: '/dashboard/freelancers', icon: Users },
     { name: 'History', href: '/dashboard/history', icon: History },
   ]
 
@@ -60,7 +65,7 @@ export function Sidebar() {
   return (
     <aside 
       className={cn(
-        "fixed left-0 top-0 bottom-0 z-40 flex flex-col border-r bg-card transition-all duration-300",
+        "fixed left-0 top-0 bottom-0 z-40 hidden md:flex flex-col border-r bg-card transition-all duration-300",
         isCollapsed ? "w-16" : "w-64"
       )}
     >

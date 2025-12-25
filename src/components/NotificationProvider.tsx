@@ -51,11 +51,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: 20, scale: 0.95 }}
               className={cn(
-                "pointer-events-auto w-full bg-card border rounded-2xl shadow-2xl p-4 flex gap-4 overflow-hidden relative group",
-                n.type === "success" && "border-green-500/20 bg-green-500/5",
-                n.type === "error" && "border-red-500/20 bg-red-500/5",
-                n.type === "info" && "border-blue-500/20 bg-blue-500/5",
-                n.type === "loading" && "border-primary/20 bg-primary/5"
+                "pointer-events-auto w-full bg-card/95 border backdrop-blur-xl rounded-2xl shadow-2xl p-4 flex gap-4 overflow-hidden relative group transition-all",
+                n.type === "success" && "border-green-500/50",
+                n.type === "error" && "border-red-500/50",
+                n.type === "info" && "border-blue-500/50",
+                n.type === "loading" && "border-primary/50"
               )}
             >
               <div className={cn(

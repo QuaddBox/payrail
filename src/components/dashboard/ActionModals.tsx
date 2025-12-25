@@ -107,10 +107,10 @@ export function SendCryptoModal({ isOpen, onClose }: { isOpen: boolean; onClose:
     try {
         setIsSubmitting(true)
         await transferSTX(recipient, parseFloat(amount))
-        showNotification("success", "Transaction Broadcast", "Your transfer has been submitted to the network.")
+        // Modal stays open until broadcast is confirmed or cancelled by the wallet
         onClose()
     } catch (e) {
-        showNotification("error", "Transfer Failed", "Something went wrong.")
+        // useStacks handles user-facing errors via notifications
     } finally {
         setIsSubmitting(false)
     }
