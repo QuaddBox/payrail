@@ -39,7 +39,17 @@ const calculateNextRun = (lastPayout: string | null, frequency: string) => {
 }
 
 export default function ScheduledPayrollPage({ initialRecipients = [] }: { initialRecipients: any[] }) {
-  const { isConnected, connectWallet, executePayroll, transferBTC, getSTXPrice, getBTCPrice } = useStacks()
+  const { 
+    isConnected, 
+    connectWallet, 
+    executePayroll, 
+    transferBTC, 
+    getSTXPrice, 
+    getBTCPrice,
+    getRecentTransactions,
+    address: myAddress
+  } = useStacks()
+  const { showNotification } = useNotification()
   const router = useRouter()
   const [recipients, setRecipients] = React.useState(initialRecipients)
   const [isSubmitting, setIsSubmitting] = React.useState<string | null>(null)
@@ -62,6 +72,47 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
     }
     fetchPrices()
   }, [getSTXPrice, getBTCPrice])
+
+  // Auto-sync history for recipients who haven't been 'tracked' yet
+  React.useEffect(() => {
+    async function syncHistory() {
+      const updatedRecipients = [...recipients]
+      let changed = false
+
+      // Only check recipients with NO recorded payout date
+      for (let i = 0; i < updatedRecipients.length; i++) {
+        const r = updatedRecipients[i]
+        if (!r.last_payout_at && r.wallet_address) {
+          try {
+            const txs = await getRecentTransactions(r.wallet_address)
+            // Find most recent successful transaction where WE sent them STX
+            const lastTx = txs.find((tx: any) => 
+               tx.sender_address === myAddress && 
+               tx.tx_status === 'success'
+            )
+            
+            if (lastTx) {
+              updatedRecipients[i] = {
+                ...r,
+                last_payout_at: new Date(lastTx.burn_block_time * 1000).toISOString()
+              }
+              changed = true
+            }
+          } catch (e) {
+            console.error(`Failed to sync history for ${r.name}`, e)
+          }
+        }
+      }
+
+      if (changed) {
+        setRecipients(updatedRecipients)
+      }
+    }
+
+    if (isMounted && myAddress && recipients.some(r => !r.last_payout_at)) {
+      syncHistory()
+    }
+  }, [isMounted, myAddress, getRecentTransactions, recipients.length])
 
   const currentPrice = currency === 'STX' ? stxPrice : btcPrice
   
