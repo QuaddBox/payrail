@@ -31,14 +31,27 @@ export function PayrollClient({ initialRecipients = [] }: { initialRecipients: a
   const [selectedCount, setSelectedCount] = React.useState(0)
   const [currency, setCurrency] = React.useState<'STX' | 'BTC'>('STX')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-  const { isConnected, connectWallet, executePayroll } = useStacks()
+  const { isConnected, connectWallet, executePayroll, transferBTC, getSTXPrice, getBTCPrice } = useStacks()
   const { showNotification } = useNotification()
+  const [stxPrice, setStxPrice] = React.useState(0)
+  const [btcPrice, setBtcPrice] = React.useState(0)
 
   const recipients = initialRecipients.length > 0 ? initialRecipients : [
     { id: 1, name: "John Doe", wallet: "SP123...4567", amount: 250 },
     { id: 2, name: "Jane Smith", wallet: "SP987...1234", amount: 1200 },
     { id: 3, name: "Alice Brown", wallet: "SP555...6666", amount: 400 },
   ]
+
+  React.useEffect(() => {
+    const fetchPrices = async () => {
+      const [sPrice, bPrice] = await Promise.all([getSTXPrice(), getBTCPrice()])
+      setStxPrice(sPrice)
+      setBtcPrice(bPrice)
+    }
+    fetchPrices()
+  }, [getSTXPrice, getBTCPrice])
+
+  const currentPrice = currency === 'STX' ? stxPrice : btcPrice
 
   return (
     <motion.div 
@@ -109,17 +122,28 @@ export function PayrollClient({ initialRecipients = [] }: { initialRecipients: a
                             </div>
                             <div>
                                 <p className="font-bold text-sm">{f.name}</p>
-                                <p className="text-xs text-muted-foreground font-mono">{f.wallet_address || f.wallet}</p>
+                                <p className="text-[10px] text-muted-foreground font-mono">
+                                    {currency === 'STX' 
+                                        ? (f.wallet_address || f.wallet) 
+                                        : (f.btc_address || 'No BTC Address')}
+                                </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-4">
-                            <div className="relative w-36">
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-extrabold text-primary uppercase tracking-widest z-10">{currency}</span>
-                              <Input 
-                                type="number" 
-                                defaultValue={f.rate || f.amount}
-                                className="h-9 pr-14 font-extrabold text-right font-mono rounded-lg border-primary/20"
-                              />
+                            <div className="relative w-40 flex flex-col items-end gap-1">
+                              <div className="relative w-full">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">$</span>
+                                <Input 
+                                  type="number" 
+                                  defaultValue={f.rate || f.amount}
+                                  className="h-9 pl-6 pr-4 font-bold text-right rounded-lg border-primary/20"
+                                />
+                              </div>
+                              {currentPrice > 0 && (
+                                <span className="text-[10px] font-bold text-primary animate-pulse pr-1">
+                                  ≈ {((f.rate || f.amount) / currentPrice).toFixed(currency === 'BTC' ? 6 : 2)} {currency}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -161,8 +185,16 @@ export function PayrollClient({ initialRecipients = [] }: { initialRecipients: a
                         <Send className="h-8 w-8" />
                       </div>
                       <div>
-                        <p className="text-3xl font-extrabold tracking-tight">TOTAL {currency}</p>
-                        <p className="text-sm text-muted-foreground">Payout for {recipients.length} recipients</p>
+                        <p className="text-3xl font-extrabold tracking-tight">
+                            {currentPrice > 0 
+                                ? (recipients.reduce((acc, f) => acc + (f.rate || f.amount), 0) / currentPrice).toFixed(currency === 'BTC' ? 6 : 2) 
+                                : recipients.reduce((acc, f) => acc + (f.rate || f.amount), 0)
+                            } {currency}
+                        </p>
+                        <p className="text-sm font-bold text-muted-foreground mt-1">
+                            Total: ${recipients.reduce((acc, f) => acc + (f.rate || f.amount), 0).toLocaleString()} (USD)
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Payout for {recipients.length} recipients</p>
                       </div>
                     </div>
 
@@ -171,8 +203,15 @@ export function PayrollClient({ initialRecipients = [] }: { initialRecipients: a
                       <div className="space-y-2">
                         {recipients.map((f: any) => (
                           <div key={f.id} className="flex justify-between items-center text-sm py-2 border-b border-border/50">
-                            <span className="font-medium">{f.name}</span>
-                            <span className="font-mono font-bold">{f.rate || f.amount} {currency}</span>
+                            <div className="flex flex-col">
+                                <span className="font-medium">{f.name}</span>
+                                <span className="text-[10px] text-muted-foreground">${f.rate || f.amount} (Rate)</span>
+                            </div>
+                            <span className="font-mono font-bold text-primary">
+                                {currentPrice > 0 
+                                    ? (((f.rate || f.amount) / currentPrice).toFixed(currency === 'BTC' ? 6 : 2)) 
+                                    : (f.rate || f.amount)} {currency}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -195,7 +234,20 @@ export function PayrollClient({ initialRecipients = [] }: { initialRecipients: a
                           // For MVP, we execute for each recipient sequentially
                           // In a real app, this would be a single batch transaction contract call
                           for (const r of recipients) {
-                             await executePayroll(r.wallet_address || r.wallet, r.rate || r.amount)
+                             if (currency === 'STX') {
+                               const amountInStx = stxPrice > 0 ? (parseFloat(r.rate || r.amount) / stxPrice) : (parseFloat(r.rate || r.amount))
+                               await executePayroll(r.wallet_address || r.wallet, amountInStx)
+                             } else {
+                               const btcAddress = r.btc_address || r.btcWallet
+                               if (!btcAddress) {
+                                 showNotification('error', 'Missing BTC Address', `No Bitcoin address found for ${r.name}`)
+                                 continue
+                               }
+                               const amountInBtc = btcPrice > 0 ? (parseFloat(r.rate || r.amount) / btcPrice) : 0
+                               if (amountInBtc > 0) {
+                                 await transferBTC(btcAddress, amountInBtc)
+                               }
+                             }
                           }
                           setStep(3)
                         } catch (err) {

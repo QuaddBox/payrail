@@ -49,16 +49,25 @@ function ListSkeleton() {
   )
 }
 
-export function BusinessDashboard({ initialOrgName }: { initialOrgName?: string }) {
+export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { initialOrgName?: string; initialRecipients?: any[] }) {
   const { user } = useAuth();
-  const { isConnected, address, connectWallet } = useStacks();
+  const { isConnected, address, connectWallet, getSTXPrice } = useStacks();
   const [isMounted, setIsMounted] = React.useState(false)
   const [isSendModalOpen, setIsSendModalOpen] = React.useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false)
+  const [stxPrice, setStxPrice] = React.useState(0)
 
   React.useEffect(() => {
     setIsMounted(true)
-  }, [])
+    const fetchPrice = async () => {
+        const price = await getSTXPrice()
+        setStxPrice(price)
+    }
+    fetchPrice()
+  }, [getSTXPrice])
+
+  const totalMonthlyUSD = initialRecipients.reduce((acc, curr) => acc + (parseFloat(curr.rate) || 0), 0)
+  const estimatedSTX = stxPrice > 0 ? (totalMonthlyUSD / stxPrice).toFixed(2) : "0"
 
   return (
     <React.Fragment>
@@ -119,7 +128,7 @@ export function BusinessDashboard({ initialOrgName }: { initialOrgName?: string 
                   onClick={() => setIsAddModalOpen(true)}
               >
                 <Plus className="mr-2 h-4 w-4" />
-                Add Member
+                Add Recipient
               </Button>
             </div>
           )}
@@ -170,7 +179,8 @@ export function BusinessDashboard({ initialOrgName }: { initialOrgName?: string 
               <CardContent>
                 <div className="p-4 bg-white/10 rounded-xl space-y-2 mb-6 text-center">
                   <div className="text-xs opacity-70 mb-1">Estimated Batch Total</div>
-                  <div className="text-2xl font-black">---- STX</div>
+                  <div className="text-2xl font-black">{estimatedSTX} STX</div>
+                  <div className="text-[10px] opacity-60 font-bold">${totalMonthlyUSD.toLocaleString()} (monthly)</div>
                 </div>
                 <Link href="/dashboard/payroll/create" className="block">
                   <Button

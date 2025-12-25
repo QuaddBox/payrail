@@ -31,16 +31,50 @@ const itemVariants = {
   }
 }
 
+import { useStacks } from "@/hooks/useStacks"
+
 export function HistoryClient({ initialTransactions = [] }: { initialTransactions?: any[] }) {
   const [activeTab, setActiveTab] = React.useState<'all' | 'sent' | 'received'>('all')
+  const { address, getRecentTransactions, isTestnet } = useStacks()
+  const [txs, setTxs] = React.useState<any[]>(initialTransactions)
+  const [isLoading, setIsLoading] = React.useState(txs.length === 0)
+  const [isMounted, setIsMounted] = React.useState(false)
 
-  // Using provided data or fallback to empty
-  const transactions = initialTransactions.length > 0 ? initialTransactions : [
-    { id: "1", type: "sent", name: "John Doe", amount: "250 STX", date: "Oct 24, 2025", status: "Success", txid: "0x123...abc" },
-    { id: "2", type: "received", name: "Acme Org", amount: "0.05 BTC", date: "Oct 22, 2025", status: "Success", txid: "bc1q...xyz" },
-    { id: "3", type: "sent", name: "Jane Smith", amount: "800 STX", date: "Oct 20, 2025", status: "Pending", txid: "0x789...ghi" },
-    { id: "4", type: "sent", name: "Alice Brown", amount: "0.01 BTC", date: "Oct 18, 2025", status: "Failed", txid: "bc1p...123" },
-  ]
+  React.useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
+  React.useEffect(() => {
+    async function load() {
+        if (address) {
+            setIsLoading(true)
+            const data = await getRecentTransactions(address)
+            setTxs(data || [])
+            setIsLoading(false)
+        }
+    }
+    if (txs.length === 0 && address) load()
+  }, [address, getRecentTransactions, txs.length])
+
+  // Process transactions for display
+  const transactions = txs.map(tx => {
+    const isSent = tx.sender_address === address
+    const amount = isSent 
+      ? (tx.stx_sent || tx.token_transfer?.amount || 0) 
+      : (tx.stx_received || tx.token_transfer?.amount || 0)
+    
+    return {
+      id: tx.tx_id,
+      type: isSent ? "sent" : "received",
+      name: isSent ? (tx.tx_type === 'smart_contract' ? (tx.contract_call?.function_name || 'Call') : 'Transfer') : 'Internal',
+      amount: `${(Number(amount) / 1_000_000).toLocaleString()} STX`,
+      date: new Date(tx.burn_block_time * 1000).toLocaleDateString(),
+      status: tx.tx_status === 'success' ? 'Success' : 'Pending',
+      txid: tx.tx_id
+    }
+  })
+
+  if (!isMounted) return null
 
   return (
     <motion.div 

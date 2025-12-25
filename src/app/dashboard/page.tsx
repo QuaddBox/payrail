@@ -26,7 +26,14 @@ export default async function DashboardPage() {
     )
   }
 
-  if (profile.role === 'business') return <BusinessDashboard initialOrgName={profile.organization_name} />
+  if (profile.role === 'business') {
+    const { data: members } = await supabase
+      .from('team_members')
+      .select('*')
+      .eq('organization_id', user.id)
+    
+    return <BusinessDashboard initialOrgName={profile.organization_name} initialRecipients={members || []} />
+  }
   if (profile.role === 'freelancer') return <FreelancerDashboard />
 
   return (

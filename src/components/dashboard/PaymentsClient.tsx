@@ -31,12 +31,57 @@ const itemVariants = {
   }
 }
 
-export function PaymentsClient() {
-  const incomingPayments = [
-    { id: "1", from: "Design Studio Inc.", project: "UI/UX Freelance Oct", amount: "850 STX", date: "Oct 24, 2025", status: "Success", fiat: "~$680.00" },
-    { id: "2", from: "Tech Solutions LLC", project: "API Integration", amount: "0.1 BTC", date: "Oct 15, 2025", status: "Success", fiat: "~$6,400.00" },
-    { id: "3", from: "Acme Org", project: "Consulting", amount: "500 STX", date: "Oct 10, 2025", status: "Success", fiat: "~$400.00" },
-  ]
+import { useStacks } from "@/hooks/useStacks"
+
+export function PaymentsClient({ initialTransactions = [] }: { initialTransactions?: any[] }) {
+  const { address, getRecentTransactions, getSTXPrice, getBTCPrice } = useStacks()
+  const [txs, setTxs] = React.useState<any[]>(initialTransactions)
+  const [stxPrice, setStxPrice] = React.useState(0)
+  const [btcPrice, setBtcPrice] = React.useState(0)
+  const [isLoading, setIsLoading] = React.useState(txs.length === 0)
+  const [isMounted, setIsMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
+  React.useEffect(() => {
+    async function load() {
+        if (address) {
+            setIsLoading(true)
+            const [data, sPrice, bPrice] = await Promise.all([
+                getRecentTransactions(address),
+                getSTXPrice(),
+                getBTCPrice()
+            ])
+            setTxs(data || [])
+            setStxPrice(sPrice)
+            setBtcPrice(bPrice)
+            setIsLoading(false)
+        }
+    }
+    if (txs.length === 0 && address) load()
+  }, [address, getRecentTransactions, getSTXPrice, getBTCPrice, txs.length])
+
+  // Filter for incoming payments (received)
+  const incomingTransactions = txs.filter(tx => tx.sender_address !== address)
+
+  const incomingPayments = incomingTransactions.map(tx => {
+    const amountSTX = Number(tx.stx_received || tx.token_transfer?.amount || 0) / 1_000_000
+    return {
+      id: tx.tx_id,
+      from: tx.sender_address.substring(0, 10) + '...',
+      project: tx.tx_type === 'smart_contract' ? (tx.contract_call?.function_name || 'Payment') : 'Transfer',
+      amount: `${amountSTX.toLocaleString()} STX`,
+      date: new Date(tx.burn_block_time * 1000).toLocaleDateString(),
+      status: tx.tx_status === 'success' ? 'Success' : 'Pending',
+      fiat: `~$${(amountSTX * stxPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    }
+  })
+
+  const totalRevenueSTX = incomingTransactions.reduce((acc, tx) => acc + (Number(tx.stx_received || tx.token_transfer?.amount || 0) / 1_000_000), 0)
+
+  if (!isMounted) return null
 
   return (
     <motion.div 
@@ -61,10 +106,10 @@ export function PaymentsClient() {
        {/* Stats Grid */}
        <motion.div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" variants={itemVariants}>
          {[
-           { title: "Total Revenue", value: "3,450 STX / 0.1 BTC", sub: "Last 30 days", icon: Wallet, color: "text-green-600 bg-green-100 dark:bg-green-950/30" },
-           { title: "Avg. Payment", value: "1,150 STX", sub: "Per project", icon: ArrowDownLeft, color: "text-blue-600 bg-blue-100 dark:bg-blue-950/30" },
-           { title: "Clients", value: "3 Active", sub: "Paying in BTC/STX", icon: Building2, color: "text-purple-600 bg-purple-100 dark:bg-purple-950/30" },
-           { title: "Next Expected", value: "500 STX", sub: "Oct 30, 2025", icon: Calendar, color: "text-orange-600 bg-orange-100 dark:bg-orange-950/30" },
+           { title: "Total Revenue", value: `${totalRevenueSTX.toLocaleString()} STX`, sub: "All time", icon: Wallet, color: "text-green-600 bg-green-100 dark:bg-green-950/30" },
+           { title: "Avg. Payment", value: `${(incomingPayments.length > 0 ? totalRevenueSTX / incomingPayments.length : 0).toFixed(2)} STX`, sub: "Per project", icon: ArrowDownLeft, color: "text-blue-600 bg-blue-100 dark:bg-blue-950/30" },
+           { title: "Total USD", value: `$${(totalRevenueSTX * stxPrice).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, sub: "Market value", icon: Building2, color: "text-purple-600 bg-purple-100 dark:bg-purple-950/30" },
+           { title: "Payments", value: incomingPayments.length.toString(), sub: "Total count", icon: Calendar, color: "text-orange-600 bg-orange-100 dark:bg-orange-950/30" },
          ].map((stat, i) => (
           <Card key={i} className="border-none shadow-sm">
             <CardContent className="p-5 flex flex-col justify-between h-full">

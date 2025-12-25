@@ -1,12 +1,14 @@
-'use client'
+import { createClient } from "@/lib/supabase-server"
+import { redirect } from "next/navigation"
+import CreatePayrollClient from './CreatePayrollClient'
 
-import dynamic from 'next/dynamic'
+export default async function CreatePayrollPage() {
+  const supabase = await createClient()
 
-const CreatePayrollClient = dynamic(
-  () => import('./CreatePayrollClient'),
-  { ssr: false }
-)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    redirect("/login")
+  }
 
-export default function CreatePayrollPage() {
   return <CreatePayrollClient />
 }

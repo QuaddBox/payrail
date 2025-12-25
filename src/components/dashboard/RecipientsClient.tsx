@@ -79,12 +79,12 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
     >
       <motion.div className="flex flex-col md:flex-row md:items-center justify-between gap-4" variants={itemVariants}>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Team Members</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Payout Recipients</h1>
           <p className="text-muted-foreground mt-1">Manage your employees, contractors, and their payment details.</p>
         </div>
         <Button onClick={() => setIsAddModalOpen(true)} className="rounded-xl shadow-lg shadow-primary/20">
           <Plus className="mr-2 h-4 w-4" />
-          Add Team Member
+          Add Recipient
         </Button>
       </motion.div>
 
@@ -122,10 +122,10 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-muted-foreground font-medium bg-accent/5">
-                    <th className="px-6 py-4 text-left">Member Name</th>
+                    <th className="px-6 py-4 text-left">Recipient Name</th>
                     <th className="px-6 py-4 text-left">Role</th>
                     <th className="px-6 py-4 text-left">Wallet Address</th>
-                    <th className="px-6 py-4 text-left">Rate</th>
+                    <th className="px-6 py-4 text-left">Rate (USD)</th>
                     <th className="px-6 py-4 text-left">Status</th>
                     <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
@@ -163,7 +163,7 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
-                          <span className="font-bold">{f.rate} STX</span>
+                          <span className="font-bold">${f.rate}</span>
                           <span className="text-[10px] text-muted-foreground uppercase">{f.payment_frequency}</span>
                         </div>
                       </td>

@@ -30,7 +30,7 @@ export function MobileNav() {
 
   const businessLinks: NavItem[] = [
     { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Org', href: '/dashboard/organization', icon: Building2 },
+    { name: 'Recipients', href: '/dashboard/recipients', icon: Users },
     { name: 'Pay', href: '/dashboard/payroll/create', icon: Send },
     { name: 'History', href: '/dashboard/history', icon: History },
     { name: 'Profile', href: '/dashboard/profile', icon: Settings, isProfile: true },

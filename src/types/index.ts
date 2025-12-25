@@ -25,6 +25,7 @@ export interface Freelancer {
   id: string
   email: string
   wallet_address: string
+  btc_address?: string
   name: string
   rate: number
 }

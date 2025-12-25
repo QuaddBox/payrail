@@ -45,7 +45,7 @@ export function Sidebar() {
     { name: 'Organization', href: '/dashboard/organization', icon: Building2 },
     { name: 'Run Payroll', href: '/dashboard/payroll/create', icon: Send },
     { name: 'Scheduled', href: '/dashboard/payroll/scheduled', icon: Calendar },
-    { name: 'Recipients', href: '/dashboard/freelancers', icon: Users },
+    { name: 'Recipients', href: '/dashboard/recipients', icon: Users },
     { name: 'History', href: '/dashboard/history', icon: History },
   ]
 

@@ -8,12 +8,40 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 // Sub-component for Earnings Stats
+import { useStacks } from "@/hooks/useStacks";
+
 export function FreelancerEarningsStats() {
-  // In a real app, this would fetch from a hook or prop
+  const { address, getSTXBalance, getRecentTransactions } = useStacks();
+  const [balance, setBalance] = React.useState(0);
+  const [lastPayment, setLastPayment] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    async function load() {
+      if (address) {
+        setIsLoading(true);
+        const [stxBal, txs] = await Promise.all([
+          getSTXBalance(address),
+          getRecentTransactions(address)
+        ]);
+        setBalance(stxBal);
+        
+        // Find last received payment
+        const lastReceived = txs?.find((tx: any) => tx.sender_address !== address);
+        if (lastReceived) {
+          const amount = Number(lastReceived.stx_received || lastReceived.token_transfer?.amount || 0) / 1_000_000;
+          setLastPayment(amount);
+        }
+        setIsLoading(false);
+      }
+    }
+    load();
+  }, [address, getSTXBalance, getRecentTransactions]);
+
   const stats = [
-    { title: "Total Earnings", value: "14,250 STX", icon: Wallet, color: "text-green-600 bg-green-100" },
-    { title: "Last Payment", value: "850 STX", icon: ArrowDownLeft, color: "text-blue-600 bg-blue-100" },
-    { title: "Pending Clearance", value: "200 STX", icon: Clock, color: "text-orange-600 bg-orange-100" },
+    { title: "Current Balance", value: `${balance.toLocaleString()} STX`, icon: Wallet, color: "text-green-600 bg-green-100" },
+    { title: "Last Payment", value: `${lastPayment.toLocaleString()} STX`, icon: ArrowDownLeft, color: "text-blue-600 bg-blue-100" },
+    { title: "Status", value: "Active", icon: Clock, color: "text-orange-600 bg-orange-100" },
   ];
 
   return (
@@ -39,15 +67,32 @@ export function FreelancerEarningsStats() {
 
 // Sub-component for Recent Earnings List
 export function RecentEarningsList() {
+  const { address, getRecentTransactions } = useStacks();
+  const [txs, setTxs] = React.useState<any[]>([]);
   const [currentPage, setCurrentPage] = React.useState(1);
-  const itemsPerPage = 2;
+  const [isLoading, setIsLoading] = React.useState(true);
+  const itemsPerPage = 5;
 
-  const allEarnings = [
-    { from: "Design Studio Inc.", ref: "UI/UX Freelance Oct", amount: "+850 STX", date: "Oct 24, 2025" },
-    { from: "Tech Solutions LLC", ref: "API Integration", amount: "+2,100 STX", date: "Oct 15, 2025" },
-    { from: "Acme Org", ref: "Consulting", amount: "+500 STX", date: "Oct 10, 2025" },
-    { from: "Web Wizards", ref: "Frontend Support", amount: "+1,200 STX", date: "Oct 5, 2025" },
-  ];
+  React.useEffect(() => {
+    async function load() {
+      if (address) {
+        setIsLoading(true);
+        const data = await getRecentTransactions(address);
+        // Filter for incoming payments
+        const incoming = data?.filter((tx: any) => tx.sender_address !== address) || [];
+        setTxs(incoming);
+        setIsLoading(false);
+      }
+    }
+    load();
+  }, [address, getRecentTransactions]);
+
+  const allEarnings = txs.map(tx => ({
+    from: tx.sender_address.substring(0, 10) + '...',
+    ref: tx.tx_type === 'smart_contract' ? (tx.contract_call?.function_name || 'Payment') : 'Transfer',
+    amount: `+${(Number(tx.stx_received || tx.token_transfer?.amount || 0) / 1_000_000).toLocaleString()} STX`,
+    date: new Date(tx.burn_block_time * 1000).toLocaleDateString()
+  }));
 
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentEarnings = allEarnings.slice(startIndex, startIndex + itemsPerPage);

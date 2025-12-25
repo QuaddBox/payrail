@@ -29,27 +29,34 @@ function StatSkeleton() {
 
 // Sub-component for Blockchain Stats
 export function BlockchainStats({ address }: { address: string }) {
-  const { getBusinessInfo, getSTXBalance, getRecentTransactions } = useStacks();
+  const { getBusinessInfo, getSTXBalance, getRecentTransactions, getSTXPrice } = useStacks();
   const [data, setData] = React.useState<{
     balance: number | null;
+    usdBalance: number | null;
     status: string;
     paid: number;
+    paidUsd: number;
     members: number;
-  }>({ balance: null, status: "Checking...", paid: 0, members: 0 });
+    stxPrice: number;
+  }>({ balance: null, usdBalance: null, status: "Checking...", paid: 0, paidUsd: 0, members: 0, stxPrice: 0 });
 
   React.useEffect(() => {
     const fetch = async () => {
       if (!address) return;
       try {
-        const [statusData, stxBalance, txData] = await Promise.all([
+        const [statusData, stxBalance, txData, price] = await Promise.all([
           getBusinessInfo(address),
           getSTXBalance(address),
-          getRecentTransactions(address)
+          getRecentTransactions(address),
+          getSTXPrice()
         ]);
 
         const totalPaid = (txData || [])
-          .filter((tx: any) => tx.tx_status === 'success' && tx.tx_type === 'smart_contract' && tx.sender_address === address)
-          .reduce((acc: number, tx: any) => acc + (tx.stx_sent || 0) / 1_000_000, 0);
+          .filter((tx: any) => tx.tx_status === 'success' && tx.sender_address === address)
+          .reduce((acc: number, tx: any) => {
+             const amt = tx.stx_sent || tx.token_transfer?.amount || 0;
+             return acc + (Number(amt) / 1_000_000);
+          }, 0);
 
         const activeFreelancers = new Set(
           (txData || [])
@@ -60,21 +67,42 @@ export function BlockchainStats({ address }: { address: string }) {
 
         setData({
           balance: stxBalance,
+          usdBalance: stxBalance !== null ? stxBalance * price : null,
           status: statusData?.isRegistered ? "Registered" : "Unregistered",
           paid: totalPaid,
-          members: activeFreelancers
+          paidUsd: totalPaid * price,
+          members: activeFreelancers,
+          stxPrice: price
         });
       } catch (e) {
         console.error(e);
       }
     };
     fetch();
-  }, [address, getBusinessInfo, getSTXBalance, getRecentTransactions]);
+
+    // Polling for real-time updates every 15 seconds
+    const interval = setInterval(fetch, 15000);
+    return () => clearInterval(interval);
+  }, [address, getBusinessInfo, getSTXBalance, getRecentTransactions, getSTXPrice]);
 
   const stats = [
-    { title: "Total Paid (On-Chain)", value: `${data.paid.toLocaleString()} STX`, sub: "Total Payroll", icon: Send, color: "text-orange-600 bg-orange-100" },
+    { 
+      title: "Total Paid (On-Chain)", 
+      value: `${data.paid.toLocaleString()} STX`, 
+      usdValue: `$${data.paidUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      sub: "Total Payroll", 
+      icon: Send, 
+      color: "text-orange-600 bg-orange-100" 
+    },
     { title: "Active Recipients", value: data.members.toString(), sub: "Registered wallets", icon: Users, color: "text-blue-600 bg-blue-100" },
-    { title: "Wallet Balance", value: data.balance !== null ? `${data.balance.toLocaleString()} STX` : "----", sub: "Available funds", icon: Wallet, color: "text-purple-600 bg-purple-100" },
+    { 
+      title: "Wallet Balance", 
+      value: data.balance !== null ? `${data.balance.toLocaleString()} STX` : "----", 
+      usdValue: data.usdBalance !== null ? `$${data.usdBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null,
+      sub: "Available funds", 
+      icon: Wallet, 
+      color: "text-purple-600 bg-purple-100" 
+    },
     { title: "Status", value: data.status, sub: "Business Role", icon: CheckCircle2, color: "text-green-600 bg-green-100" },
   ];
 
@@ -94,6 +122,9 @@ export function BlockchainStats({ address }: { address: string }) {
             <div>
               <p className="text-sm text-muted-foreground font-medium">{stat.title}</p>
               <h3 className="text-2xl font-bold mt-1 tracking-tight">{stat.value}</h3>
+              {stat.usdValue && (
+                <p className="text-xs font-bold text-muted-foreground mt-0.5">{stat.usdValue}</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -160,7 +191,15 @@ export function RecentTransactionsList({ address }: { address: string }) {
                       {tx.tx_status}
                     </span>
                   </td>
-                  <td className="py-4 font-mono font-bold">{((tx.stx_sent || 0) / 1_000_000).toLocaleString()} STX</td>
+                   <td className="py-4 font-mono font-bold text-primary">
+                    {(() => {
+                      const isSent = tx.sender_address === address;
+                      const amount = isSent 
+                        ? (tx.stx_sent || tx.token_transfer?.amount || 0) 
+                        : (tx.stx_received || tx.token_transfer?.amount || 0);
+                      return `${(Number(amount) / 1_000_000).toLocaleString()} STX`;
+                    })()}
+                  </td>
                   <td className="py-4 text-right">
                     <Link href={`https://explorer.stacks.co/txid/${tx.tx_id}?chain=${isTestnet ? 'testnet' : 'mainnet'}`} target="_blank">
                       <ExternalLink className="h-4 w-4 ml-auto text-primary" />

@@ -205,7 +205,9 @@ export function AddTeamMemberModal({ isOpen, onClose, initialData }: { isOpen: b
   const [endDate, setEndDate] = React.useState("")
   const [duration, setDuration] = React.useState("")
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [stxPrice, setStxPrice] = React.useState(0)
   const { showNotification } = useNotification()
+  const { getSTXPrice } = useStacks()
 
   React.useEffect(() => {
     if (initialData) {
@@ -234,6 +236,14 @@ export function AddTeamMemberModal({ isOpen, onClose, initialData }: { isOpen: b
       setType('contractor')
     }
   }, [initialData, isOpen])
+
+  React.useEffect(() => {
+    const fetchPrice = async () => {
+      const price = await getSTXPrice()
+      setStxPrice(price)
+    }
+    if (isOpen) fetchPrice()
+  }, [isOpen, getSTXPrice])
 
   const handleOnboard = async () => {
     if (!name || !wallet) {
@@ -288,8 +298,8 @@ export function AddTeamMemberModal({ isOpen, onClose, initialData }: { isOpen: b
     <Modal 
       isOpen={isOpen} 
       onClose={onClose} 
-      title={initialData ? "Edit Team Member" : "Add Team Member"} 
-      description={initialData ? "Update existing team member details." : "Onboard a new employee or contractor to your organization."}
+      title={initialData ? "Edit Recipient" : "Add Recipient"} 
+      description={initialData ? "Update existing recipient details." : "Onboard a new employee or contractor as a payout recipient."}
     >
       <div className="space-y-4">
         <div className="flex bg-accent/50 rounded-xl p-1">
@@ -357,16 +367,24 @@ export function AddTeamMemberModal({ isOpen, onClose, initialData }: { isOpen: b
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-                <div className="flex justify-between">
-                    <Label htmlFor="rate">Payment Amount</Label>
+                <div className="flex justify-between items-center">
+                    <Label htmlFor="rate">Monthly Rate (USD)</Label>
+                    {stxPrice > 0 && rate && (
+                        <span className="text-[10px] font-bold text-primary animate-pulse">
+                            ≈ {(parseFloat(rate) / stxPrice).toFixed(2)} STX
+                        </span>
+                    )}
                 </div>
-                <Input 
-                    id="rate" 
-                    placeholder="0.00" 
-                    className="rounded-xl h-12" 
-                    value={rate}
-                    onChange={(e) => setRate(e.target.value)}
-                />
+                <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
+                    <Input 
+                        id="rate" 
+                        placeholder="0.00" 
+                        className="rounded-xl h-12 pl-8" 
+                        value={rate}
+                        onChange={(e) => setRate(e.target.value)}
+                    />
+                </div>
             </div>
             <div className="space-y-1.5">
                 <Label>Frequency</Label>

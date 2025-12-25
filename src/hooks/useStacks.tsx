@@ -152,6 +152,25 @@ export function useStacks() {
     })
   }, [network, showNotification])
 
+  const transferBTC = useCallback(async (recipient: string, amount: number) => {
+    // amount is in BTC, need Satoshis (10^8)
+    const amountSats = Math.floor(amount * 100_000_000)
+
+    // Stacks Connect supports Bitcoin transfers in compatible wallets (Xverse, Leather)
+    return (StacksConnect as any).openBitcoinTransfer({
+      address: recipient,
+      amount: amountSats,
+      onFinish: (data: any) => {
+        console.log('Transfer BTC finished:', data)
+        showNotification('success', 'Bitcoin transfer broadcasted!')
+      },
+      onCancel: () => {
+        console.log('Transfer BTC cancelled')
+        showNotification('info', 'BTC Transfer cancelled')
+      },
+    })
+  }, [showNotification])
+
   // --- Read-Only Functions ---
 
   const getBusinessInfo = useCallback(async (businessAddress: string) => {
@@ -215,6 +234,28 @@ export function useStacks() {
     }
   }, [network])
 
+  const getSTXPrice = useCallback(async () => {
+    try {
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=blockstack&vs_currencies=usd')
+      const data = await response.json()
+      return data.blockstack.usd as number
+    } catch (e) {
+      console.error('Error fetching STX price:', e)
+      return 0
+    }
+  }, [])
+
+  const getBTCPrice = useCallback(async () => {
+    try {
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd')
+      const data = await response.json()
+      return data.bitcoin.usd as number
+    } catch (e) {
+      console.error('Error fetching BTC price:', e)
+      return 0
+    }
+  }, [])
+
   return {
     address,
     isConnected,
@@ -224,9 +265,12 @@ export function useStacks() {
     createOrganization,
     executePayroll,
     transferSTX,
+    transferBTC,
     getBusinessInfo,
     getSTXBalance,
     getRecentTransactions,
+    getSTXPrice,
+    getBTCPrice,
     contractAddress: CONTRACT_ADDRESS,
     contractName: CONTRACT_NAME,
     network,

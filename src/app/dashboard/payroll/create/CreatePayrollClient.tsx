@@ -20,29 +20,48 @@ import { getTeamMembers } from "@/app/actions/team"
 import { Loader2, Search } from "lucide-react"
 
 export default function CreatePayrollPage() {
-  const { isConnected, address, connectWallet, executePayroll } = useStacks()
+  const { isConnected, address, connectWallet, executePayroll, transferBTC, getSTXBalance, getSTXPrice, getBTCPrice } = useStacks()
   const { showNotification } = useNotification()
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [isLoading, setIsLoading] = React.useState(true)
+  const [isMounted, setIsMounted] = React.useState(false)
   const [recipients, setRecipients] = React.useState<any[]>([])
   const [amount, setAmount] = React.useState("")
   const [recipient, setRecipient] = React.useState("")
+  const [currency, setCurrency] = React.useState<'STX' | 'BTC'>('STX')
+  const [stxPrice, setStxPrice] = React.useState(0)
+  const [btcPrice, setBtcPrice] = React.useState(0)
+  const [balance, setBalance] = React.useState<number | null>(null)
   const [scheduleType, setScheduleType] = React.useState("one-time")
 
   React.useEffect(() => {
-    async function loadRecipients() {
+    setIsMounted(true)
+    async function loadData() {
       try {
-        const { data, error } = await getTeamMembers()
-        if (error) throw new Error(error)
-        setRecipients(data || [])
+        const [teamRes, sPrice, bPrice] = await Promise.all([
+          getTeamMembers(),
+          getSTXPrice(),
+          getBTCPrice()
+        ])
+        if (teamRes.error) throw new Error(teamRes.error)
+        setRecipients(teamRes.data || [])
+        setStxPrice(sPrice)
+        setBtcPrice(bPrice)
+
+        if (address) {
+          const bal = await getSTXBalance(address)
+          setBalance(bal)
+        }
       } catch (err) {
-        showNotification("error", "Failed to load recipients")
+        showNotification("error", "Failed to load dashboard data")
       } finally {
         setIsLoading(false)
       }
     }
-    loadRecipients()
-  }, [])
+    loadData()
+  }, [address])
+
+  const currentPrice = currency === 'STX' ? stxPrice : btcPrice
 
   const handleExecutePayroll = async () => {
     if (!isConnected) {
@@ -57,7 +76,11 @@ export default function CreatePayrollPage() {
 
     try {
       setIsSubmitting(true)
-      await executePayroll(recipient, parseFloat(amount))
+      if (currency === 'STX') {
+        await executePayroll(recipient, parseFloat(amount))
+      } else {
+        await transferBTC(recipient, parseFloat(amount))
+      }
     } catch (err) {
       // Handled by useStacks
     } finally {
@@ -70,11 +93,33 @@ export default function CreatePayrollPage() {
   
   const daysOfMonth = Array.from({ length: 31 }, (_, i) => i + 1)
 
+  if (!isMounted) return null
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Run Payroll</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Execute STX payments to your registered recipients.</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Run Payroll</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Execute {currency} payments to your registered recipients.</p>
+        </div>
+        <div className="flex bg-accent rounded-xl p-1 shrink-0">
+          <Button 
+            variant={currency === 'STX' ? 'default' : 'ghost'} 
+            size="sm" 
+            className="rounded-md h-8 text-xs font-bold"
+            onClick={() => setCurrency('STX')}
+          >
+            STX
+          </Button>
+          <Button 
+            variant={currency === 'BTC' ? 'default' : 'ghost'} 
+            size="sm" 
+            className="rounded-md h-8 text-xs font-bold"
+            onClick={() => setCurrency('BTC')}
+          >
+            BTC
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -100,8 +145,8 @@ export default function CreatePayrollPage() {
                         </div>
                       ) : (
                         recipients.map((r) => (
-                          <SelectItem key={r.id} value={r.wallet_address}>
-                            {r.wallet_address.substring(0, 5)}...{r.wallet_address.substring(r.wallet_address.length - 4)} ({r.name})
+                          <SelectItem key={r.id} value={currency === 'STX' ? r.wallet_address : (r.btc_address || r.wallet_address)}>
+                            {r.name} ({currency === 'STX' ? 'STX' : 'BTC'})
                           </SelectItem>
                         ))
                       )}
@@ -112,14 +157,14 @@ export default function CreatePayrollPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="amount">Amount (STX)</Label>
+                  <Label htmlFor="amount">Amount ({currency})</Label>
                   <div className="relative">
                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
                       id="amount" 
                       type="number" 
                       placeholder="0.00" 
-                      className="pl-10 rounded-xl" 
+                      className="pl-10 pr-16 rounded-xl" 
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                     />
@@ -215,7 +260,7 @@ export default function CreatePayrollPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Available</span>
-                <span className="font-bold">850.42 STX</span>
+                <span className="font-bold">{balance !== null ? `${balance.toLocaleString()} STX` : "--- STX"}</span>
               </div>
               <div className="pt-2 border-t border-border/50">
                 <p className="text-[10px] text-muted-foreground italic text-center">

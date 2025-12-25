@@ -47,7 +47,7 @@ export async function addTeamMember(member: {
 
   if (error) return { error: error.message }
   
-  revalidatePath('/dashboard/freelancers')
+  revalidatePath('/dashboard/recipients')
   return { success: true }
 }
 
@@ -65,7 +65,7 @@ export async function updateTeamMember(id: string, updates: any) {
 
   if (error) return { error: error.message }
 
-  revalidatePath('/dashboard/freelancers')
+  revalidatePath('/dashboard/recipients')
   return { success: true }
 }
 
