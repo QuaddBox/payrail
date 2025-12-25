@@ -76,21 +76,36 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
   // Auto-sync history for recipients who haven't been 'tracked' yet
   React.useEffect(() => {
     async function syncHistory() {
-      const updatedRecipients = [...recipients]
-      let changed = false
+      if (!myAddress) return
 
-      // Only check recipients with NO recorded payout date
-      for (let i = 0; i < updatedRecipients.length; i++) {
-        const r = updatedRecipients[i]
-        if (!r.last_payout_at && r.wallet_address) {
-          try {
-            const txs = await getRecentTransactions(r.wallet_address)
-            // Find most recent successful transaction where WE sent them STX
-            const lastTx = txs.find((tx: any) => 
-               tx.sender_address === myAddress && 
-               tx.tx_status === 'success'
-            )
-            
+      try {
+        // Broaden search to USER's history (sender-centric) - more reliable
+        const myTxs = await getRecentTransactions(myAddress)
+        const updatedRecipients = [...recipients]
+        let changed = false
+
+        for (let i = 0; i < updatedRecipients.length; i++) {
+          const r = updatedRecipients[i]
+          if (!r.last_payout_at && r.wallet_address) {
+            // Find most recent successful transaction to THIS recipient
+            const lastTx = myTxs.find((tx: any) => {
+              if (tx.tx_status !== 'success') return false
+
+              // Check 1: Direct STX Transfer
+              if (tx.tx_type === 'token_transfer') {
+                return tx.token_transfer.recipient_address === r.wallet_address
+              }
+
+              // Check 2: execute-payroll Smart Contract Call
+              if (tx.tx_type === 'smart_contract' && tx.contract_call?.function_name === 'execute-payroll') {
+                // The first argument is the recipient
+                const args = tx.contract_call.function_args || []
+                return args.some((arg: any) => arg.repr === r.wallet_address || arg.repr === `'${r.wallet_address}`)
+              }
+
+              return false
+            })
+
             if (lastTx) {
               updatedRecipients[i] = {
                 ...r,
@@ -98,14 +113,14 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
               }
               changed = true
             }
-          } catch (e) {
-            console.error(`Failed to sync history for ${r.name}`, e)
           }
         }
-      }
 
-      if (changed) {
-        setRecipients(updatedRecipients)
+        if (changed) {
+          setRecipients(updatedRecipients)
+        }
+      } catch (e) {
+        console.error("Failed to sync history from user address:", e)
       }
     }
 

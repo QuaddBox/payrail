@@ -228,7 +228,7 @@ export function useStacks() {
       const apiUrl = isMainnet
         ? 'https://api.mainnet.hiro.so' 
         : 'https://api.testnet.hiro.so'
-      const response = await fetch(`${apiUrl}/extended/v1/address/${stxAddress}/transactions?limit=20`)
+      const response = await fetch(`${apiUrl}/extended/v1/address/${stxAddress}/transactions?limit=50`)
       const data = await response.json()
       return data.results
     } catch (e) {
