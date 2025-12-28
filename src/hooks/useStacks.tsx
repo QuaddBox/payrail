@@ -215,26 +215,6 @@ export function useStacks() {
     })
   }, [network, showNotification])
 
-  const transferBTC = useCallback(async (recipient: string, amount: number, onFinish?: (data: any) => void) => {
-    // amount is in BTC, need Satoshis (10^8)
-    const amountSats = Math.floor(amount * 100_000_000)
-
-    // Stacks Connect supports Bitcoin transfers in compatible wallets (Xverse, Leather)
-    return (StacksConnect as any).openBitcoinTransfer({
-      address: recipient,
-      amount: amountSats,
-      onFinish: (data: any) => {
-        console.log('Transfer BTC finished:', data)
-        showNotification('success', 'Bitcoin transfer broadcasted!')
-        if (onFinish) onFinish(data)
-      },
-      onCancel: () => {
-        console.log('Transfer BTC cancelled')
-        showNotification('info', 'BTC Transfer cancelled')
-      },
-    })
-  }, [showNotification])
-
   // --- Read-Only Functions ---
 
   const getBusinessInfo = useCallback(async (businessAddress: string) => {
@@ -348,7 +328,6 @@ export function useStacks() {
     executePayroll,
     executeBatchPayroll,
     transferSTX,
-    transferBTC,
     getBusinessInfo,
     getSTXBalance,
     getRecentTransactions,

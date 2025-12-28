@@ -21,7 +21,7 @@ import { notifyPaymentSent } from "@/app/actions/payroll"
 import { PaymentSuccessModal } from "@/components/ui/PaymentSuccessModal"
 
 export default function CreatePayrollPage() {
-  const { isConnected, address, connectWallet, executePayroll, transferBTC, getSTXBalance, getSTXPrice, getBTCPrice } = useStacks()
+  const { isConnected, address, connectWallet, executePayroll, getSTXBalance, getSTXPrice, getBTCPrice } = useStacks()
   const { showNotification } = useNotification()
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [isLoading, setIsLoading] = React.useState(true)
@@ -97,57 +97,35 @@ export default function CreatePayrollPage() {
       )
       const recipientName = selectedRecipient?.name || 'Recipient'
       
-      if (currency === 'STX') {
-        await executePayroll(recipient, parseFloat(amount), async (data: any) => {
-            const txId = data.txId || ""
-            // Show success modal
-            setSuccessModal({
-              isOpen: true,
-              recipientName,
-              amount,
-              currency: 'STX',
-              txId
-            })
-            // Send email notification to recipient
-            await notifyPaymentSent({
-              recipientWallet: recipient,
-              amount,
-              currency: 'STX',
-              txId
-            })
-            // Clear form
-            setRecipient("")
-            setAmount("")
-            // Refresh wallet balance after a short delay
-            setTimeout(async () => {
-              if (address) {
-                const newBalance = await getSTXBalance(address)
-                setBalance(newBalance)
-              }
-            }, 3000)
-        })
-      } else {
-        await transferBTC(recipient, parseFloat(amount), async (data: any) => {
-             const txId = data.txId || ""
-             // Show success modal
-             setSuccessModal({
-               isOpen: true,
-               recipientName,
-               amount,
-               currency: 'BTC',
-               txId
-             })
-             // Send email notification to recipient
-             await notifyPaymentSent({
-               recipientWallet: recipient,
-               amount,
-               currency: 'BTC',
-               txId
-             })
-             setRecipient("")
-             setAmount("")
-        })
-      }
+      // Execute STX payment (BTC is coming soon)
+      await executePayroll(recipient, parseFloat(amount), async (data: any) => {
+          const txId = data.txId || ""
+          // Show success modal
+          setSuccessModal({
+            isOpen: true,
+            recipientName,
+            amount,
+            currency: 'STX',
+            txId
+          })
+          // Send email notification to recipient
+          await notifyPaymentSent({
+            recipientWallet: recipient,
+            amount,
+            currency: 'STX',
+            txId
+          })
+          // Clear form
+          setRecipient("")
+          setAmount("")
+          // Refresh wallet balance after a short delay
+          setTimeout(async () => {
+            if (address) {
+              const newBalance = await getSTXBalance(address)
+              setBalance(newBalance)
+            }
+          }, 3000)
+      })
     } catch (err: any) {
       console.error("Create Payroll Error:", err)
       showNotification('error', 'Payment Error', err.message || 'An unexpected error occurred.')
@@ -171,14 +149,21 @@ export default function CreatePayrollPage() {
           >
             STX
           </Button>
-          <Button 
-            variant={currency === 'BTC' ? 'default' : 'ghost'} 
-            size="sm" 
-            className="rounded-md h-8 text-xs font-bold"
-            onClick={() => setCurrency('BTC')}
-          >
-            BTC
-          </Button>
+          <div className="relative">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="rounded-md h-8 text-xs font-bold opacity-50 cursor-not-allowed"
+              disabled
+            >
+              BTC
+            </Button>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-[8px] font-black uppercase tracking-tight bg-primary/90 text-primary-foreground px-1.5 py-0.5 rounded-full">
+                Soon
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

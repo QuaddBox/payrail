@@ -31,7 +31,7 @@ export function PayrollClient({ initialRecipients = [] }: { initialRecipients: a
   const [selectedCount, setSelectedCount] = React.useState(0)
   const [currency, setCurrency] = React.useState<'STX' | 'BTC'>('STX')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-  const { isConnected, connectWallet, executePayroll, transferBTC, getSTXPrice, getBTCPrice } = useStacks()
+  const { isConnected, connectWallet, executePayroll, getSTXPrice, getBTCPrice } = useStacks()
   const { showNotification } = useNotification()
   const [stxPrice, setStxPrice] = React.useState(0)
   const [btcPrice, setBtcPrice] = React.useState(0)
@@ -102,14 +102,21 @@ export function PayrollClient({ initialRecipients = [] }: { initialRecipients: a
                       >
                         STX
                       </Button>
-                      <Button 
-                        variant={currency === 'BTC' ? 'default' : 'ghost'} 
-                        size="sm" 
-                        className="rounded-md h-8 text-xs font-bold"
-                        onClick={() => setCurrency('BTC')}
-                      >
-                        BTC
-                      </Button>
+                      <div className="relative">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="rounded-md h-8 text-xs font-bold opacity-50 cursor-not-allowed"
+                          disabled
+                        >
+                          BTC
+                        </Button>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-[8px] font-black uppercase tracking-tight bg-primary/90 text-primary-foreground px-1.5 py-0.5 rounded-full">
+                            Soon
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -234,20 +241,9 @@ export function PayrollClient({ initialRecipients = [] }: { initialRecipients: a
                           // For MVP, we execute for each recipient sequentially
                           // In a real app, this would be a single batch transaction contract call
                           for (const r of recipients) {
-                             if (currency === 'STX') {
-                               const amountInStx = stxPrice > 0 ? (parseFloat(r.rate || r.amount) / stxPrice) : (parseFloat(r.rate || r.amount))
-                               await executePayroll(r.wallet_address || r.wallet, amountInStx)
-                             } else {
-                               const btcAddress = r.btc_address || r.btcWallet
-                               if (!btcAddress) {
-                                 showNotification('error', 'Missing BTC Address', `No Bitcoin address found for ${r.name}`)
-                                 continue
-                               }
-                               const amountInBtc = btcPrice > 0 ? (parseFloat(r.rate || r.amount) / btcPrice) : 0
-                               if (amountInBtc > 0) {
-                                 await transferBTC(btcAddress, amountInBtc)
-                               }
-                             }
+                          // BTC is coming soon - only STX is supported
+                          const amountInStx = stxPrice > 0 ? (parseFloat(r.rate || r.amount) / stxPrice) : (parseFloat(r.rate || r.amount))
+                          await executePayroll(r.wallet_address || r.wallet, amountInStx)
                           }
                           setStep(3)
                         } catch (err) {
