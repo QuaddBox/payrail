@@ -257,6 +257,26 @@ export function OrganizationClient({
                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                        Register Business Wallet
                     </Button>
+                  ) : !hasOrg ? (
+                    <>
+                      <div className="flex justify-between items-center text-sm pt-2 border-t border-border/50">
+                          <span className="text-muted-foreground">Business</span>
+                          <span className="text-green-600 font-bold uppercase tracking-widest text-[10px]">Registered</span>
+                      </div>
+                      <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-200 dark:border-amber-900">
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+                          ⚠️ Organization not created on blockchain. You won't be able to make payments until this is fixed.
+                        </p>
+                        <Button 
+                          onClick={() => orgName && createOrganization(orgName)} 
+                          disabled={isSubmitting || !orgName}
+                          className="w-full rounded-xl bg-amber-500 hover:bg-amber-600 font-bold text-white"
+                        >
+                          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Create Organization On-Chain
+                        </Button>
+                      </div>
+                    </>
                   ) : (
                     <div className="flex justify-between items-center text-sm pt-2 border-t border-border/50">
                         <span className="text-muted-foreground">Registration</span>
@@ -269,7 +289,13 @@ export function OrganizationClient({
                   </div>
                   <div className="flex justify-between items-center text-sm pt-2 border-t border-border/50">
                     <span className="text-muted-foreground">Status</span>
-                    <span className="text-green-600 font-bold uppercase tracking-widest text-[10px]">Active & Verified</span>
+                    {isRegistered && hasOrg ? (
+                      <span className="text-green-600 font-bold uppercase tracking-widest text-[10px]">Active & Verified</span>
+                    ) : isRegistered ? (
+                      <span className="text-amber-600 font-bold uppercase tracking-widest text-[10px]">Incomplete Setup</span>
+                    ) : (
+                      <span className="text-red-600 font-bold uppercase tracking-widest text-[10px]">Not Registered</span>
+                    )}
                   </div>
                </div>
             </CardContent>

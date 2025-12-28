@@ -20,6 +20,22 @@ export async function getTeamMembers() {
   return { data }
 }
 
+export async function getTeamProfile() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: "Not authenticated" }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('organization_name, full_name')
+    .eq('id', user.id)
+    .single()
+
+  if (error) return { error: error.message }
+  return { data }
+}
+
 export async function addTeamMember(member: {
   name: string
   role?: string
@@ -99,15 +115,18 @@ export async function deleteTeamMember(id: string) {
   return { success: true }
 }
 
-export async function recordPayout(id: string) {
+export async function recordPayout(id: string, txId?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) return { error: "Not authenticated" }
 
+  const updates: any = { last_payout_at: new Date().toISOString() }
+  if (txId) updates.last_tx_id = txId
+
   const { error } = await supabase
     .from('team_members')
-    .update({ last_payout_at: new Date().toISOString() })
+    .update(updates)
     .eq('id', id)
     .eq('organization_id', user.id)
 

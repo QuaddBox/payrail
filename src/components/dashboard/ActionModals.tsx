@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Plus,
@@ -41,43 +42,207 @@ interface ModalProps {
   children: React.ReactNode
 }
 
+export interface EnrichedTransaction {
+  id: string
+  txId: string
+  date: string
+  timestamp: string // ISO string
+  recipientName: string
+  recipientAddress: string
+  senderName: string
+  senderAddress: string
+  amount: string
+  amountUSD?: string
+  status: string
+  rawStatus: string
+  type: string // "Manual" | "Scheduled"
+  txType: string // "Transfer" | "Contract Call"
+  fee: string
+  blockHeight: number
+  nonce: number
+  explorerLink: string
+  txResult?: string
+}
+
+/**
+ * Truncates a wallet address or transaction ID.
+ * @param address The address to truncate
+ * @param startChars Number of characters to show at the start (default: 4)
+ * @param endChars Number of characters to show at the end (default: 4)
+ */
+export function truncateAddress(address: string, startChars = 4, endChars = 4) {
+  if (!address || address.length <= startChars + endChars) return address
+  return `${address.slice(0, startChars)}...${address.slice(-endChars)}`
+}
+
+/**
+ * Enriches a raw Stacks transaction with application-specific data.
+ */
+export function enrichTransaction(
+  tx: any, 
+  members: any[] = [], 
+  orgName: string = "Organization",
+  currentAddress: string = "",
+  stxPrice: number = 0
+): EnrichedTransaction {
+  const isSent = tx.sender_address === currentAddress
+  
+  // Determine amount
+  let amount = 0
+  if (tx.tx_type === 'token_transfer') {
+    amount = Number(tx.token_transfer.amount) / 1_000_000
+  } else if (tx.tx_type === 'smart_contract' || tx.tx_type === 'contract_call') {
+    // Try to find amount in function args if it's a known contract call
+    // or just assume 0 for now if complex
+    amount = 0 // In a real app we'd parse this better
+    if (tx.contract_call?.function_name === 'execute-payroll') {
+        // extract amount from args if possible, usually 2nd arg
+        // but raw args are complex to parse without a library helper here
+        // fallback to stx_sent if available in metadata
+        amount = (Number(tx.fee_rate) / 1_000_000) // Default to fee for now if 0, but usually we want mapped amount
+    }
+  }
+  // If we have explicit stx_sent/received fields from Hiroshima API
+  if (isSent && tx.stx_sent) amount = Number(tx.stx_sent) / 1_000_000
+  if (!isSent && tx.stx_received) amount = Number(tx.stx_received) / 1_000_000
+
+  // Resolve Recipient
+  let recipientAddress = tx.token_transfer?.recipient_address || 
+                         (isSent ? 'Unknown' : currentAddress)
+
+  // Handle Contract Calls for specific functions (e.g. execute-payroll)
+  if (tx.tx_type === 'contract_call' || tx.tx_type === 'smart_contract') {
+      if (tx.contract_call?.function_name === 'execute-payroll') {
+        // Try to extract real recipient from args
+        // Args usually come as { repr: 'ST...' } or { hex: ... } in API response
+        const args = tx.contract_call.function_args || []
+        if (args.length > 0 && args[0].repr) {
+             // repr might be 'ST...' (quoted) or just ST... depending on API version
+             // safely strip quotes if present
+             recipientAddress = args[0].repr.replace(/^'/, '').replace(/'$/, '')
+        }
+        
+        if (args.length > 1 && args[1].repr) {
+             // Amount is usually u1000000
+             const rawAmt = args[1].repr.replace('u', '')
+             const parsed = parseInt(rawAmt)
+             if (!isNaN(parsed)) {
+                 amount = parsed / 1_000_000
+             }
+        }
+      } else {
+        // Fallback for other contract calls
+        recipientAddress = tx.contract_call?.contract_id || ''
+      }
+  }
+
+  // If it's a contract call we initiated, the "recipient" in our context might be the person we paid
+  // But the tx recipient is the contract. 
+  // For 'execute-payroll', the first arg is the recipient. 
+  // We'll stick to the raw tx recipient (contract) or transfer recipient for absolute truth,
+  // BUT we can try to look up the 'real' recipient if we can parse args.
+  // For now, let's stick to the Transfer recipient or the Contract address.
+  
+  // Try to find recipient name in members
+  const member = members.find(m => m.wallet_address === recipientAddress)
+  const recipientName = member ? member.name : (isSent ? truncateAddress(recipientAddress) : orgName)
+  
+  const senderName = isSent ? orgName : (members.find(m => m.wallet_address === tx.sender_address)?.name || truncateAddress(tx.sender_address))
+
+  // Payroll Type - better naming for UX
+  const isContractCall = tx.tx_type === 'contract_call' || tx.tx_type === 'smart_contract'
+  const functionName = tx.contract_call?.function_name
+  const payrollType = isContractCall 
+    ? (functionName === 'execute-batch-payroll' ? 'Batch Payroll' : 
+       functionName === 'execute-payroll' ? 'One-time' : 
+       functionName === 'register-business' ? 'Registration' :
+       functionName === 'create-organization' ? 'Organization Setup' : 'Contract Call')
+    : 'One-time'
+
+  return {
+    id: tx.tx_id,
+    txId: tx.tx_id,
+    date: new Date(tx.burn_block_time * 1000).toLocaleString(),
+    timestamp: new Date(tx.burn_block_time * 1000).toISOString(),
+    recipientName,
+    recipientAddress,
+    senderName,
+    senderAddress: tx.sender_address,
+    amount: `${amount.toLocaleString()} STX`,
+    amountUSD: stxPrice ? `$${(amount * stxPrice).toFixed(2)}` : undefined,
+    status: formatTxStatus(tx.tx_status),
+    rawStatus: tx.tx_status,
+    type: payrollType,
+    txType: isContractCall ? 'Contract Call' : 'Transfer',
+    fee: `${(Number(tx.fee_rate) / 1_000_000).toLocaleString()} STX`,
+    blockHeight: tx.block_height,
+    nonce: tx.nonce,
+    explorerLink: `https://explorer.stacks.co/txid/${tx.tx_id}?chain=testnet`, // Default to testnet
+    txResult: tx.tx_result?.repr || tx.tx_result?.hex || undefined
+  }
+}
+
+/**
+ * Maps technical blockchain status strings to user-friendly labels.
+ */
+export function formatTxStatus(status: string) {
+  if (!status) return "Unknown"
+  const s = status.toLowerCase()
+  if (s === 'success') return 'Success'
+  if (s === 'pending') return 'Processing'
+  if (s === 'abort_by_response' || s === 'abort_by_post_condition') return 'Declined'
+  if (s.includes('abort') || s.includes('failed')) return 'Failed'
+  // capitalize first letter if nothing else matches
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
 export function Modal({ isOpen, onClose, title, description, children }: ModalProps) {
-  return (
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+    return () => setMounted(false)
+  }, [])
+
+  const modalContent = (
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            className="absolute inset-0 bg-black/60 backdrop-blur-md"
+          />
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.95, opacity: 0, y: 20 }}
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-lg bg-card border rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
           >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg bg-card border rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-            >
-              <div className="p-6 sm:p-8 pb-4 flex items-center justify-between shrink-0">
-                <div className="space-y-1">
-                  <CardTitle className="text-2xl">{title}</CardTitle>
-                  {description && <CardDescription className="text-sm">{description}</CardDescription>}
-                </div>
-                <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full shrink-0">
-                  <X className="h-5 w-5" />
-                </Button>
+            <div className="p-6 sm:p-8 pb-4 flex items-center justify-between shrink-0">
+              <div className="space-y-1">
+                <CardTitle className="text-2xl">{title}</CardTitle>
+                {description && <CardDescription className="text-sm">{description}</CardDescription>}
               </div>
-              <div className="flex-1 overflow-y-auto px-6 sm:px-8 pb-6 sm:pb-8">
-                {children}
-              </div>
-            </motion.div>
+              <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full shrink-0">
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 sm:px-8 pb-6 sm:pb-8 custom-scrollbar">
+              {children}
+            </div>
           </motion.div>
-        </>
+        </div>
       )}
     </AnimatePresence>
   )
+
+  if (!mounted) return null
+
+  return createPortal(modalContent, document.body)
 }
 
 export function SendCryptoModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -106,11 +271,15 @@ export function SendCryptoModal({ isOpen, onClose }: { isOpen: boolean; onClose:
 
     try {
         setIsSubmitting(true)
-        await transferSTX(recipient, parseFloat(amount))
+        await transferSTX(recipient, parseFloat(amount), (data: any) => {
+             const txId = data.txId || ""
+             showNotification('success', 'Transfer Broadcasted', `Tx ID: ${txId}`)
+        })
         // Modal stays open until broadcast is confirmed or cancelled by the wallet
         onClose()
-    } catch (e) {
-        // useStacks handles user-facing errors via notifications
+    } catch (e: any) {
+        console.error("Transfer Error:", e)
+        showNotification('error', 'Transfer Error', e.message || 'An unexpected error occurred.')
     } finally {
         setIsSubmitting(false)
     }
@@ -319,7 +488,7 @@ export function AddTeamMemberModal({ isOpen, onClose, initialData }: { isOpen: b
             </Button>
         </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
                 <Input 
@@ -342,7 +511,7 @@ export function AddTeamMemberModal({ isOpen, onClose, initialData }: { isOpen: b
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
                 <Label htmlFor="stx-address">STX Address</Label>
                 <Input 
@@ -365,7 +534,7 @@ export function AddTeamMemberModal({ isOpen, onClose, initialData }: { isOpen: b
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
                 <div className="flex justify-between items-center">
                     <Label htmlFor="rate">Monthly Rate (USD)</Label>
@@ -392,7 +561,7 @@ export function AddTeamMemberModal({ isOpen, onClose, initialData }: { isOpen: b
                     <SelectTrigger className="rounded-xl h-12">
                         <SelectValue placeholder="Select frequency" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[200]">
                         <SelectItem value="hourly">Hourly</SelectItem>
                         <SelectItem value="daily">Daily</SelectItem>
                         <SelectItem value="weekly">Weekly</SelectItem>
@@ -420,7 +589,7 @@ export function AddTeamMemberModal({ isOpen, onClose, initialData }: { isOpen: b
                 <Calendar className="h-4 w-4 text-primary" />
                 Contract Details
             </h4>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                     <Label htmlFor="start-date">Start Date</Label>
                     <Input 
@@ -569,6 +738,140 @@ export function ReceiveCryptoModal({ isOpen, onClose }: { isOpen: boolean; onClo
                 <>Only send <strong>Bitcoin (BTC)</strong> to this address.</>
             )}
              Sending other assets may result in permanent loss.
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+export function TransactionDetailsModal({ 
+  isOpen, 
+  onClose, 
+  transaction 
+}: { 
+  isOpen: boolean
+  onClose: () => void
+  transaction: EnrichedTransaction | null 
+}) {
+  const { showNotification } = useNotification()
+
+  if (!transaction) return null
+
+  const handleCopy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text)
+    showNotification('success', 'Copied!', `${label} copied to clipboard`)
+  }
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Transaction Details"
+      description="Complete metadata and audit trail for this transaction."
+    >
+      <div className="space-y-6">
+        {/* Header Status & Amount */}
+        <div className="flex flex-col items-center justify-center p-6 bg-accent/30 rounded-2xl border border-border/50">
+           <div className={cn(
+             "px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider mb-3",
+             transaction.rawStatus === 'success' ? "bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400" : 
+             transaction.rawStatus === 'pending' ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400" :
+             "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400"
+           )}>
+             {transaction.status}
+           </div>
+           <div className="text-3xl font-black tracking-tight">{transaction.amount}</div>
+           {transaction.amountUSD && (
+             <div className="text-sm font-bold text-muted-foreground mt-1">{transaction.amountUSD}</div>
+           )}
+        </div>
+
+        {/* Key Details Grid */}
+        <div className="grid gap-4 text-sm">
+          
+          <div className="flex items-center justify-between p-3 rounded-xl hover:bg-accent/50 transition-colors group">
+            <span className="text-muted-foreground font-medium">Transaction ID</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs">{truncateAddress(transaction.txId, 6, 6)}</span>
+              <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleCopy(transaction.txId, 'Tx ID')}>
+                <Copy className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-3 rounded-xl hover:bg-accent/50 transition-colors">
+            <span className="text-muted-foreground font-medium">Time</span>
+            <span className="font-semibold">{transaction.date}</span>
+          </div>
+
+          <div className="flex items-center justify-between p-3 rounded-xl hover:bg-accent/50 transition-colors">
+            <span className="text-muted-foreground font-medium">Payroll Type</span>
+            <span className="font-semibold">{transaction.type}</span>
+          </div>
+          
+           <div className="flex items-center justify-between p-3 rounded-xl hover:bg-accent/50 transition-colors">
+            <span className="text-muted-foreground font-medium">Transaction Type</span>
+            <span className="font-semibold">{transaction.txType}</span>
+          </div>
+
+          <div className="space-y-1 p-3 rounded-xl hover:bg-accent/50 transition-colors">
+             <div className="flex justify-between mb-1">
+                <span className="text-muted-foreground font-medium">From (Sender)</span>
+             </div>
+             <div className="flex items-center justify-between">
+                <span className="font-bold">{transaction.senderName}</span>
+                <div className="flex items-center gap-2">
+                   <span className="font-mono text-xs text-muted-foreground">{truncateAddress(transaction.senderAddress)}</span>
+                   <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleCopy(transaction.senderAddress, 'Sender Address')}>
+                     <Copy className="h-3 w-3" />
+                   </Button>
+                </div>
+             </div>
+          </div>
+
+          <div className="space-y-1 p-3 rounded-xl hover:bg-accent/50 transition-colors">
+             <div className="flex justify-between mb-1">
+                <span className="text-muted-foreground font-medium">To (Recipient)</span>
+             </div>
+             <div className="flex items-center justify-between">
+                <span className="font-bold">{transaction.recipientName}</span>
+                <div className="flex items-center gap-2">
+                   <span className="font-mono text-xs text-muted-foreground">{truncateAddress(transaction.recipientAddress)}</span>
+                   <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleCopy(transaction.recipientAddress, 'Recipient Address')}>
+                     <Copy className="h-3 w-3" />
+                   </Button>
+                </div>
+             </div>
+          </div>
+        </div>
+
+        {/* Technical Details Collapsible (Simplified as just list for now) */}
+        <div className="border-t pt-4 space-y-2">
+             <h4 className="text-xs font-bold uppercase text-muted-foreground mb-3">Technical Details</h4>
+             <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="p-2 bg-secondary/50 rounded-lg text-center">
+                    <span className="block text-muted-foreground mb-1">Fee</span>
+                    <span className="font-mono font-bold">{transaction.fee}</span>
+                </div>
+                <div className="p-2 bg-secondary/50 rounded-lg text-center">
+                    <span className="block text-muted-foreground mb-1">Block</span>
+                    <span className="font-mono font-bold">#{transaction.blockHeight}</span>
+                </div>
+                <div className="p-2 bg-secondary/50 rounded-lg text-center">
+                    <span className="block text-muted-foreground mb-1">Nonce</span>
+                    <span className="font-mono font-bold">{transaction.nonce}</span>
+                </div>
+             </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => window.open(transaction.explorerLink, '_blank')}>
+                View Proof <ArrowDownLeft className="ml-2 h-4 w-4 rotate-180" />
+            </Button>
+            <Button className="flex-1" onClick={onClose}>
+                Close
+            </Button>
         </div>
       </div>
     </Modal>

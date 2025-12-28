@@ -10,14 +10,18 @@ import {
   Bitcoin, 
   Calendar,
   Clock,
-  ArrowUpRight,
-  ExternalLink
+  Copy, 
+  ExternalLink,
+  Eye 
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Modal } from "@/components/dashboard/ActionModals"
+import { Modal, formatTxStatus, TransactionDetailsModal, enrichTransaction, type EnrichedTransaction, truncateAddress } from "@/components/dashboard/ActionModals"
 import { Card, CardContent } from "@/components/ui/card"
 import { useStacks } from "@/hooks/useStacks"
+import { getTeamProfile } from "@/app/actions/team"
 import { cn } from "@/lib/utils"
+import { useNotification } from "@/components/NotificationProvider"
+import { ArrowUpRight, ArrowDownLeft } from "lucide-react"
 
 interface RecipientDetailsModalProps {
   isOpen: boolean
@@ -26,9 +30,12 @@ interface RecipientDetailsModalProps {
 }
 
 export function RecipientDetailsModal({ isOpen, onClose, recipient }: RecipientDetailsModalProps) {
-  const { getRecentTransactions } = useStacks()
-  const [history, setHistory] = React.useState<any[]>([])
+  const { showNotification } = useNotification()
+  const { address, getRecentTransactions, getBusinessInfo, getSTXPrice } = useStacks()
+  const [transactions, setTransactions] = React.useState<EnrichedTransaction[]>([])
+  const [selectedTx, setSelectedTx] = React.useState<EnrichedTransaction | null>(null)
   const [isLoading, setIsLoading] = React.useState(false)
+  const isBrowser = typeof window !== 'undefined'
 
   React.useEffect(() => {
     async function loadHistory() {
@@ -36,16 +43,26 @@ export function RecipientDetailsModal({ isOpen, onClose, recipient }: RecipientD
         setIsLoading(true)
         try {
           const txs = await getRecentTransactions(recipient.wallet_address)
-          setHistory(txs || [])
+          const stxPrice = await getSTXPrice()
+          const { data: profile } = await getTeamProfile()
+          
+          const orgName = profile?.organization_name || profile?.full_name || "My Business"
+
+          // We don't have full team list here effectively, but we know the recipient name from props
+          // So we construct a mini-members array with just this recipient to resolve the name correctly in enrichTransaction
+          const members = [recipient]
+          const enrichedTxs = txs.map((tx: any) => enrichTransaction(tx, members, orgName, address, stxPrice))
+          setTransactions(enrichedTxs || [])
         } catch (e) {
           console.error("Error loading recipient history:", e)
+          showNotification("error", "Error loading history", "Failed to fetch transaction history for this recipient.")
         } finally {
           setIsLoading(false)
         }
       }
     }
     loadHistory()
-  }, [recipient, isOpen, getRecentTransactions])
+  }, [recipient, isOpen, getRecentTransactions, getBusinessInfo, getSTXPrice, address, showNotification])
 
   if (!recipient) return null
 
@@ -91,6 +108,7 @@ export function RecipientDetailsModal({ isOpen, onClose, recipient }: RecipientD
           <h4 className="text-sm font-bold flex items-center gap-2">
             <HistoryIcon className="h-4 w-4 text-primary" />
             Recent Activity
+            <span className="ml-auto text-[10px] text-primary/60 font-medium px-2 py-0.5 bg-primary/5 rounded border border-primary/10">Live from Stacks</span>
           </h4>
           
           <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
@@ -98,25 +116,41 @@ export function RecipientDetailsModal({ isOpen, onClose, recipient }: RecipientD
               [...Array(3)].map((_, i) => (
                 <div key={i} className="h-14 bg-accent/5 rounded-xl animate-pulse" />
               ))
-            ) : history.length > 0 ? (
-              history.map((tx) => (
-                <div key={tx.tx_id} className="flex items-center justify-between p-3 bg-accent/5 rounded-xl hover:bg-accent/10 transition-colors group">
+            ) : transactions.length > 0 ? (
+              transactions.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between p-3 bg-accent/5 rounded-xl hover:bg-accent/10 transition-colors group">
                   <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-background flex items-center justify-center">
-                      <ArrowUpRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    <div className={cn(
+                      "h-8 w-8 rounded-full flex items-center justify-center",
+                      tx.senderAddress === address ? "bg-orange-100 text-orange-600 dark:bg-orange-950/30 dark:text-orange-400" : "bg-green-100 text-green-600 dark:bg-green-950/30 dark:text-green-400"
+                    )}>
+                      {tx.senderAddress === address ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownLeft className="h-4 w-4" />}
                     </div>
                     <div>
                       <p className="text-[11px] font-bold truncate max-w-[120px]">
-                        {tx.tx_type === 'smart_contract' ? tx.contract_call?.function_name : 'STX Transfer'}
+                        {tx.txType === 'Contract Call' ? 'Payroll Execution' : 'Transfer'}
                       </p>
-                      <p className="text-[9px] text-muted-foreground">{new Date(tx.burn_block_time * 1000).toLocaleDateString()}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={cn(
+                          "w-1.5 h-1.5 rounded-full animate-pulse",
+                          tx.rawStatus === 'success' ? "bg-green-500" : "bg-amber-500"
+                        )} />
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/80">
+                          {tx.status}
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-muted-foreground font-mono">{tx.date}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                      <a href={`https://explorer.hiro.so/txid/${tx.tx_id}?chain=testnet`} target="_blank" rel="noreferrer">
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
+                  <div className="text-right flex items-center gap-3">
+                    <p className={cn(
+                        "font-mono text-sm font-bold",
+                        tx.senderAddress === address ? "text-primary" : "text-green-600"
+                    )}>
+                        {tx.senderAddress === address ? '-' : '+'}{tx.amount}
+                    </p>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setSelectedTx(tx)}>
+                        <Eye className="h-3 w-3" />
                     </Button>
                   </div>
                 </div>
@@ -133,6 +167,11 @@ export function RecipientDetailsModal({ isOpen, onClose, recipient }: RecipientD
           Close Details
         </Button>
       </div>
+      <TransactionDetailsModal 
+        isOpen={!!selectedTx} 
+        onClose={() => setSelectedTx(null)} 
+        transaction={selectedTx} 
+      />
     </Modal>
   )
 }

@@ -1,298 +1,452 @@
 'use client'
 
 import * as React from "react"
-import { Calendar, Clock, AlertCircle, Play } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Calendar, Clock, AlertCircle, Play, Check, ExternalLink, Plus, Trash2, MoreHorizontal } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useStacks } from "@/hooks/useStacks"
 import { useNotification } from "@/components/NotificationProvider"
 import { Loader2 } from "lucide-react"
-import { recordPayout } from "@/app/actions/team"
+import { getPayrollSchedules, updateScheduleStatus, recordPayrollRun, checkDueSchedules, deletePayrollSchedule } from "@/app/actions/payroll"
 import { useRouter } from "next/navigation"
+import { cn } from "@/lib/utils"
+import { CreateScheduleModal } from "@/components/dashboard/CreateScheduleModal"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 
-const calculateNextRun = (lastPayout: string | null, frequency: string) => {
-  const now = new Date()
-  if (!lastPayout) return { date: now, isDue: true, alreadyPaid: false, isInitial: true }
-
-  const last = new Date(lastPayout)
-  const next = new Date(last)
-
-  switch (frequency.toLowerCase()) {
-    case 'hourly': next.setHours(last.getHours() + 1); break
-    case 'daily': next.setDate(last.getDate() + 1); break
-    case 'weekly': next.setDate(last.getDate() + 7); break
-    case 'monthly': next.setMonth(last.getMonth() + 1); break
-    case 'yearly': next.setFullYear(last.getFullYear() + 1); break
-    default: next.setMonth(last.getMonth() + 1)
+interface ScheduleItem {
+  id: string
+  amount: number
+  team_member_id: string
+  team_members: {
+    id: string
+    name: string
+    wallet_address: string
+    btc_address?: string
   }
+}
 
-  // Use a slight buffer to avoid immediate "Due" status after refresh
-  const bufferTime = 1000 * 60; // 1 minute
-  const isDue = now.getTime() >= (next.getTime() - bufferTime)
+interface PayrollSchedule {
+  id: string
+  name: string
+  frequency: 'weekly' | 'monthly'
+  pay_day: number
+  status: 'draft' | 'ready' | 'processing' | 'paid'
+  next_run_at: string | null
+  start_date: string | null
+  end_date: string | null
+  created_at: string
+  payroll_schedule_items: ScheduleItem[]
+}
 
-  return { 
-    date: next, 
-    isDue,
-    alreadyPaid: !isDue,
-    isInitial: false
+const formatPayDay = (frequency: string, payDay: number) => {
+  if (frequency === 'weekly') {
+    const days = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    return days[payDay] || `Day ${payDay}`
   }
+  return `Day ${payDay}`
+}
+
+const formatNextRun = (nextRunAt: string | null, status: string) => {
+  if (status === 'ready') return 'Ready to Run'
+  if (!nextRunAt) return 'Not scheduled'
+  const date = new Date(nextRunAt)
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export default function ScheduledPayrollPage({ initialRecipients = [] }: { initialRecipients: any[] }) {
   const { 
     isConnected, 
     connectWallet, 
-    executePayroll, 
-    transferBTC, 
+    executeBatchPayroll, 
     getSTXPrice, 
-    getBTCPrice,
-    getRecentTransactions,
     address: myAddress
   } = useStacks()
   const { showNotification } = useNotification()
   const router = useRouter()
-  const [recipients, setRecipients] = React.useState(initialRecipients)
+  
+  const [schedules, setSchedules] = React.useState<PayrollSchedule[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState<string | null>(null)
   const [isMounted, setIsMounted] = React.useState(false)
-
-  // Keep local state in sync with initialRecipients from server
-  React.useEffect(() => {
-    setRecipients(initialRecipients)
-  }, [initialRecipients])
-  const [currency, setCurrency] = React.useState<'STX' | 'BTC'>('STX')
+  const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false)
   const [stxPrice, setStxPrice] = React.useState(0)
-  const [btcPrice, setBtcPrice] = React.useState(0)
+
+  // Load schedules
+  const loadSchedules = React.useCallback(async () => {
+    try {
+      // First check for due schedules and mark them ready
+      await checkDueSchedules()
+      
+      const result = await getPayrollSchedules()
+      if (result.error) throw new Error(result.error)
+      setSchedules(result.data || [])
+    } catch (err: any) {
+      showNotification('error', 'Error', err.message)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [showNotification])
 
   React.useEffect(() => {
     setIsMounted(true)
-    const fetchPrices = async () => {
-      const [sPrice, bPrice] = await Promise.all([getSTXPrice(), getBTCPrice()])
-      setStxPrice(sPrice)
-      setBtcPrice(bPrice)
+    loadSchedules()
+    
+    const fetchPrice = async () => {
+      const price = await getSTXPrice()
+      setStxPrice(price)
     }
-    fetchPrices()
-  }, [getSTXPrice, getBTCPrice])
+    fetchPrice()
+  }, [loadSchedules, getSTXPrice])
 
-  // Auto-sync history for recipients who haven't been 'tracked' yet
-  React.useEffect(() => {
-    async function syncHistory() {
-      if (!myAddress) return
-
-      try {
-        // Broaden search to USER's history (sender-centric) - more reliable
-        const myTxs = await getRecentTransactions(myAddress)
-        const updatedRecipients = [...recipients]
-        let changed = false
-
-        for (let i = 0; i < updatedRecipients.length; i++) {
-          const r = updatedRecipients[i]
-          if (!r.last_payout_at && r.wallet_address) {
-            // Find most recent successful transaction to THIS recipient
-            const lastTx = myTxs.find((tx: any) => {
-              if (tx.tx_status !== 'success') return false
-
-              // Check 1: Direct STX Transfer
-              if (tx.tx_type === 'token_transfer') {
-                return tx.token_transfer.recipient_address === r.wallet_address
-              }
-
-              // Check 2: execute-payroll Smart Contract Call
-              if (tx.tx_type === 'smart_contract' && tx.contract_call?.function_name === 'execute-payroll') {
-                // The first argument is the recipient
-                const args = tx.contract_call.function_args || []
-                return args.some((arg: any) => arg.repr === r.wallet_address || arg.repr === `'${r.wallet_address}`)
-              }
-
-              return false
-            })
-
-            if (lastTx) {
-              updatedRecipients[i] = {
-                ...r,
-                last_payout_at: new Date(lastTx.burn_block_time * 1000).toISOString()
-              }
-              changed = true
-            }
-          }
-        }
-
-        if (changed) {
-          setRecipients(updatedRecipients)
-        }
-      } catch (e) {
-        console.error("Failed to sync history from user address:", e)
-      }
-    }
-
-    if (isMounted && myAddress && recipients.some(r => !r.last_payout_at)) {
-      syncHistory()
-    }
-  }, [isMounted, myAddress, getRecentTransactions, recipients.length])
-
-  const currentPrice = currency === 'STX' ? stxPrice : btcPrice
-  
-  const schedules = recipients.map(r => {
-    const { date, isDue, alreadyPaid, isInitial } = calculateNextRun(r.last_payout_at, r.payment_frequency)
-    return {
-      id: r.id,
-      recipient: r.name,
-      address: r.wallet_address,
-      btc_address: r.btc_address,
-      amount: parseFloat(r.rate) || 0,
-      frequency: r.payment_frequency.charAt(0).toUpperCase() + r.payment_frequency.slice(1),
-      nextRun: isInitial ? "Initial Payment Due" : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      status: isDue ? "Ready" : "Scheduled",
-      alreadyPaid,
-      lastPayout: r.last_payout_at
-    }
-  })
-
-  const handleRunNow = async (item: any) => {
+  const handleRunPayroll = async (schedule: PayrollSchedule) => {
     if (!isConnected) {
       connectWallet()
       return
     }
 
+    if (schedule.payroll_schedule_items.length === 0) {
+      showNotification('error', 'Error', 'No recipients in this schedule.')
+      return
+    }
+
     try {
-      setIsSubmitting(item.id)
+      setIsSubmitting(schedule.id)
       
-      const onSuccess = async () => {
-        const now = new Date().toISOString()
+      // Update status to processing
+      await updateScheduleStatus(schedule.id, 'processing')
+
+      // Build recipients list for batch payroll
+      const recipients = schedule.payroll_schedule_items.map(item => ({
+        address: item.team_members.wallet_address,
+        amountSTX: stxPrice > 0 ? item.amount / stxPrice : 0
+      }))
+
+      // Period reference for the batch
+      const periodRef = `${schedule.name}-${new Date().toISOString().slice(0, 7)}`
+
+      // Execute batch payroll
+      await executeBatchPayroll(recipients, periodRef, async (data: any) => {
+        const txId = data.txId || ""
+        const totalAmount = schedule.payroll_schedule_items.reduce((sum, i) => sum + i.amount, 0)
         
-        // Optimistic UI update
-        setRecipients(prev => prev.map(r => 
-          r.id === item.id ? { ...r, last_payout_at: now } : r
-        ))
+        // Record the run
+        await recordPayrollRun({
+          schedule_id: schedule.id,
+          status: 'success',
+          tx_id: txId,
+          total_amount: totalAmount,
+          recipient_count: recipients.length
+        })
 
-        await recordPayout(item.id)
-        showNotification('success', 'Payout Recorded', `Schedule updated for ${item.recipient}`)
+        showNotification('success', 'Payroll Executed', `${recipients.length} payments broadcasted!`)
         router.refresh()
-      }
-
-      if (currency === 'STX') {
-        const amountInStx = stxPrice > 0 ? (item.amount / stxPrice) : 0
-        if (amountInStx > 0) {
-            await executePayroll(item.address, amountInStx, onSuccess)
-        }
-      } else {
-        const btcAddress = item.btc_address
-        if (!btcAddress) {
-            showNotification('error', 'Missing BTC Address', `No Bitcoin address found for ${item.recipient}`)
-            setIsSubmitting(null)
-            return
-        }
-        const amountInBtc = btcPrice > 0 ? (item.amount / btcPrice) : 0
-        if (amountInBtc > 0) {
-            await transferBTC(btcAddress, amountInBtc, onSuccess)
-        }
-      }
+        loadSchedules()
+      })
     } catch (err: any) {
-      // Handled by useStacks
+      console.error("Batch Payroll Error:", err)
+      showNotification('error', 'Payroll Error', err.message || 'An unexpected error occurred.')
+      
+      // Reset status on error
+      await updateScheduleStatus(schedule.id, 'ready')
     } finally {
       setIsSubmitting(null)
+    }
+  }
+
+  const handleMarkReady = async (scheduleId: string) => {
+    try {
+      await updateScheduleStatus(scheduleId, 'ready')
+      showNotification('success', 'Status Updated', 'Schedule marked as ready.')
+      loadSchedules()
+    } catch (err: any) {
+      showNotification('error', 'Error', err.message)
+    }
+  }
+
+  // Delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ isOpen: boolean; scheduleId: string | null; scheduleName: string }>({
+    isOpen: false,
+    scheduleId: null,
+    scheduleName: ''
+  })
+
+  const handleDeleteRequest = (scheduleId: string, scheduleName: string) => {
+    setDeleteConfirm({ isOpen: true, scheduleId, scheduleName })
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm.scheduleId) return
+    
+    try {
+      await deletePayrollSchedule(deleteConfirm.scheduleId)
+      showNotification('success', 'Deleted', 'Schedule has been deleted.')
+      loadSchedules()
+    } catch (err: any) {
+      showNotification('error', 'Error', err.message)
+    } finally {
+      setDeleteConfirm({ isOpen: false, scheduleId: null, scheduleName: '' })
+    }
+  }
+
+  // Calculate due schedules
+  const today = new Date().toISOString().split('T')[0]
+  const dueSchedules = schedules.filter(s => {
+    if (!s.next_run_at) return false
+    const nextRun = new Date(s.next_run_at).toISOString().split('T')[0]
+    return (s.status === 'ready' || s.status === 'draft') && nextRun <= today
+  })
+  const dueCount = dueSchedules.length
+
+  // Pay All Due handler
+  const [isPayingAll, setIsPayingAll] = React.useState(false)
+  
+  const handlePayAllDue = async () => {
+    if (dueSchedules.length === 0) return
+    
+    setIsPayingAll(true)
+    let successCount = 0
+    
+    try {
+      for (const schedule of dueSchedules) {
+        if (schedule.status !== 'ready') {
+          // First mark as ready
+          await handleMarkReady(schedule.id)
+        }
+        // Then run payroll
+        await handleRunPayroll(schedule)
+        successCount++
+      }
+      
+      showNotification('success', 'All Due Paid', `Successfully processed ${successCount} payrolls!`)
+    } catch (err: any) {
+      showNotification('error', 'Error', `Processed ${successCount} payrolls before error: ${err.message}`)
+    } finally {
+      setIsPayingAll(false)
     }
   }
 
   if (!isMounted) return null
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Scheduled Payrolls</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Manage recurring on-chain payment schedules.</p>
-        </div>
-        <div className="flex bg-accent rounded-xl p-1 shrink-0">
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Due Count Alert */}
+      {dueCount > 0 && (
+        <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-red-500 text-white text-sm font-bold px-3 py-1.5 rounded-full animate-pulse shrink-0">
+              {dueCount} Due
+            </div>
+            <span className="text-sm text-muted-foreground">
+              {dueCount === 1 ? '1 payroll is' : `${dueCount} payrolls are`} ready to be paid
+            </span>
+          </div>
           <Button 
-            variant={currency === 'STX' ? 'default' : 'ghost'} 
-            size="sm" 
-            className="rounded-md h-8 text-xs font-bold"
-            onClick={() => setCurrency('STX')}
+            className="w-full sm:w-auto rounded-xl font-bold bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 shadow-lg"
+            onClick={handlePayAllDue}
+            disabled={isPayingAll}
           >
-            STX
-          </Button>
-          <Button 
-            variant={currency === 'BTC' ? 'default' : 'ghost'} 
-            size="sm" 
-            className="rounded-md h-8 text-xs font-bold"
-            onClick={() => setCurrency('BTC')}
-          >
-            BTC
+            {isPayingAll ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-4 w-4 fill-current" />
+            )}
+            Pay All Due
           </Button>
         </div>
+      )}
+
+      {/* Create Schedule Button */}
+      <div className="flex justify-end">
+        <Button 
+          className="rounded-xl font-bold px-6 shadow-lg shadow-primary/20"
+          onClick={() => setIsCreateModalOpen(true)}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Create Schedule
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        {schedules.length > 0 ? (
-          schedules.map((item, idx) => (
-            <Card key={idx} className="border-none shadow-sm overflow-hidden group">
-              <CardContent className="p-0">
-                <div className="flex flex-col md:flex-row items-center p-6 gap-6">
-                  <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                    <Calendar className="h-6 w-6" />
-                  </div>
-                  
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-lg">{item.recipient}</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700 dark:bg-green-900/30 uppercase tracking-wider">
-                        {item.frequency}
-                      </span>
+        {isLoading ? (
+          <Card className="border-none shadow-sm">
+            <CardContent className="p-12 flex flex-col items-center text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-muted-foreground mt-4">Loading schedules...</p>
+            </CardContent>
+          </Card>
+        ) : schedules.length > 0 ? (
+          schedules.map((schedule) => {
+            const totalAmount = schedule.payroll_schedule_items.reduce((sum, i) => sum + i.amount, 0)
+            const recipientCount = schedule.payroll_schedule_items.length
+            const isReady = schedule.status === 'ready'
+            const isProcessing = schedule.status === 'processing'
+            const isExpired = schedule.end_date && new Date(schedule.end_date) < new Date()
+            
+            // Check if schedule is due (next_run_at date has passed or is today)
+            const isDue = schedule.next_run_at ? new Date(schedule.next_run_at) <= new Date() : false
+            
+            // Format date range
+            const formatDateShort = (date: string) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            const dateRange = schedule.start_date 
+              ? schedule.end_date 
+                ? `${formatDateShort(schedule.start_date)} - ${formatDateShort(schedule.end_date)}`
+                : `From ${formatDateShort(schedule.start_date)}`
+              : 'Ongoing'
+            
+            return (
+              <Card key={schedule.id} className="border-none shadow-sm overflow-hidden group">
+                <CardContent className="p-0">
+                  <div className="flex flex-col md:flex-row items-start md:items-center p-6 gap-6">
+                    <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                      <Calendar className="h-6 w-6" />
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        Next Run: {item.nextRun}
-                      </span>
-                      {item.lastPayout && (
-                        <span className="text-[10px] bg-accent/30 px-1.5 py-0.5 rounded uppercase font-bold text-muted-foreground">
-                          Last Paid: {new Date(item.lastPayout).toLocaleDateString()}
+                    
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-bold text-xl">{schedule.name}</span>
+                        <span className="px-3 py-1 rounded-lg text-xs font-bold bg-primary/10 text-primary border border-primary/20 uppercase tracking-widest">
+                          {schedule.frequency}
                         </span>
-                      )}
-                      <span className="font-bold text-foreground">
-                          ${item.amount.toLocaleString()}
-                      </span>
-                      {currentPrice > 0 && (
-                          <span className="text-xs font-bold text-primary animate-pulse">
-                              ≈ {(item.amount / currentPrice).toFixed(currency === 'BTC' ? 6 : 2)} {currency}
+                        <span className={cn(
+                          "px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-1.5",
+                          isReady ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
+                          isProcessing ? "bg-blue-500/10 text-blue-500 border border-blue-500/20" :
+                          "bg-accent text-muted-foreground"
+                        )}>
+                          {isReady && <AlertCircle className="h-3 w-3" />}
+                          {isProcessing && <Loader2 className="h-3 w-3 animate-spin" />}
+                          {schedule.status}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-sm mt-4">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] uppercase tracking-tighter text-muted-foreground font-bold">Pay Day</span>
+                          <span className="font-mono font-bold text-sm">
+                            {formatPayDay(schedule.frequency, schedule.pay_day)}
                           </span>
-                      )}
+                        </div>
+
+                        <div className="flex flex-col sm:border-l sm:border-accent/30 sm:pl-4">
+                          <span className="text-[10px] uppercase tracking-tighter text-muted-foreground font-bold">Next Run</span>
+                          <span className={cn(
+                            "font-mono font-bold text-sm",
+                            isReady ? "text-amber-500" : "text-foreground/70"
+                          )}>
+                            {formatNextRun(schedule.next_run_at, schedule.status)}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col sm:border-l sm:border-accent/30 sm:pl-4">
+                          <span className="text-[10px] uppercase tracking-tighter text-muted-foreground font-bold">Recipients</span>
+                          <span className="font-bold text-sm">{recipientCount}</span>
+                        </div>
+
+                        <div className="flex flex-col sm:border-l sm:border-accent/30 sm:pl-4">
+                          <span className="text-[10px] uppercase tracking-tighter text-muted-foreground font-bold">Duration</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-sm">{dateRange}</span>
+                            {isExpired && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-500">
+                                Exp
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:border-l sm:border-accent/30 sm:pl-4 col-span-2 sm:col-span-1">
+                          <span className="text-[10px] uppercase tracking-tighter text-muted-foreground font-bold">Total</span>
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-bold text-lg">${totalAmount.toLocaleString()}</span>
+                            {stxPrice > 0 && (
+                              <span className="text-xs font-bold text-primary">
+                                ≈ {(totalAmount / stxPrice).toFixed(2)} STX
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Recipients preview */}
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {schedule.payroll_schedule_items.slice(0, 3).map((item) => (
+                          <span 
+                            key={item.id}
+                            className="text-[11px] text-muted-foreground font-mono bg-accent/30 px-2 py-1 rounded"
+                          >
+                            {item.team_members.name}: ${item.amount}
+                          </span>
+                        ))}
+                        {recipientCount > 3 && (
+                          <span className="text-[11px] text-muted-foreground px-2 py-1">
+                            +{recipientCount - 3} more
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-[10px] text-muted-foreground font-mono mt-1">
-                      {currency === 'STX' ? item.address : (item.btc_address || 'No BTC Address')}
-                    </div>
-                  </div>
 
                     <div className="flex items-center gap-3 w-full md:w-auto mt-4 md:mt-0">
-                      {item.status === "Ready" && (
-                        <div className="flex items-center gap-2 mr-4 text-amber-600 animate-pulse">
-                          <AlertCircle className="h-4 w-4" />
-                          <span className="text-xs font-bold uppercase tracking-tighter">Action Required</span>
-                        </div>
+                      {schedule.status === 'draft' && isDue && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => handleMarkReady(schedule.id)}
+                        >
+                          Mark Ready
+                        </Button>
                       )}
-                      {item.alreadyPaid && (
-                        <div className="flex items-center gap-2 mr-4 text-green-600">
-                          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                          <span className="text-xs font-bold uppercase tracking-tighter">Paid / Processing</span>
-                        </div>
+                      
+                      {schedule.status === 'draft' && !isDue && (
+                        <span className="text-xs text-muted-foreground italic">
+                          Due {formatNextRun(schedule.next_run_at, schedule.status)}
+                        </span>
                       )}
-                    <Button 
-                      className="flex-1 md:flex-none rounded-xl font-bold bg-primary px-8"
-                      onClick={() => handleRunNow(item)}
-                      disabled={isSubmitting === item.id}
-                    >
-                      {isSubmitting === item.id ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Play className="mr-2 h-4 w-4 fill-current" />
-                      )}
-                      Run Now
-                    </Button>
+                      
+                      <Button 
+                        className={cn(
+                          "flex-1 md:flex-none rounded-xl font-bold px-8 transition-all",
+                          isReady ? "bg-primary" : "bg-muted text-muted-foreground"
+                        )}
+                        onClick={() => handleRunPayroll(schedule)}
+                        disabled={!isReady || isSubmitting === schedule.id}
+                      >
+                        {isSubmitting === schedule.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="mr-2 h-4 w-4 fill-current" />
+                        )}
+                        Run Payroll
+                      </Button>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="rounded-xl">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem 
+                            className="text-red-500 focus:text-red-500"
+                            onClick={() => handleDeleteRequest(schedule.id, schedule.name)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                </CardContent>
+              </Card>
+            )
+          })
         ) : (
           <Card className="border-none shadow-sm bg-accent/5 border-2 border-dashed border-accent/20">
             <CardContent className="p-12 flex flex-col items-center text-center space-y-4">
@@ -302,20 +456,37 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
               <div className="space-y-2">
                 <h3 className="text-xl font-bold">No Scheduled Payrolls</h3>
                 <p className="text-muted-foreground max-w-xs mx-auto text-sm">
-                  You haven't scheduled any recurring payments yet. Add team members with a payment frequency to see them here.
+                  Create a recurring payroll schedule to automate your team payments.
                 </p>
               </div>
               <Button 
-                variant="outline" 
-                className="rounded-xl font-bold px-8 mt-4 hover:bg-primary hover:text-white hover:border-primary transition-all"
-                asChild
+                className="rounded-xl font-bold px-8 mt-4"
+                onClick={() => setIsCreateModalOpen(true)}
               >
-                <a href="/dashboard/recipients">Add Recipients</a>
+                <Plus className="mr-2 h-4 w-4" />
+                Create First Schedule
               </Button>
             </CardContent>
           </Card>
         )}
       </div>
+
+      <CreateScheduleModal 
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={loadSchedules}
+      />
+
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm({ isOpen: false, scheduleId: null, scheduleName: '' })}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Schedule?"
+        message={`Are you sure you want to delete "${deleteConfirm.scheduleName}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Keep it"
+        variant="danger"
+      />
     </div>
   )
 }

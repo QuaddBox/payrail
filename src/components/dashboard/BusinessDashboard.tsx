@@ -137,10 +137,12 @@ export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { 
         {/* Stats Grid - Wrapped in Suspense if we had a data-fetching parent, but for now we use skeletons in Client */}
         <motion.div variants={itemVariants}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {address ? (
-              <React.Suspense fallback={<StatSkeleton />}>
-                <BlockchainStats address={address} />
-              </React.Suspense>
+            {isMounted && address ? (
+                <BlockchainStats 
+                  address={address} 
+                  memberCount={initialRecipients.length} 
+                  pendingCount={initialRecipients.filter((r: any) => !r.wallet_address).length}
+                />
             ) : (
               [1, 2, 3, 4].map(i => (
                 <Card key={i} className="border-none shadow-sm opacity-50">
@@ -158,10 +160,8 @@ export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { 
           className="grid grid-cols-1 lg:grid-cols-3 gap-8"
           variants={itemVariants}
         >
-          {address ? (
-            <React.Suspense fallback={<ListSkeleton />}>
+          {isMounted && address ? (
               <RecentTransactionsList address={address} />
-            </React.Suspense>
           ) : (
             <Card className="lg:col-span-2 border-none shadow-sm h-64 flex items-center justify-center italic text-muted-foreground">
               Recent transactions will appear here after connection.
@@ -169,7 +169,7 @@ export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { 
           )}
 
           <div className="space-y-8">
-            <Card className="border-none shadow-sm bg-primary text-primary-foreground">
+            <Card className="border-none shadow-sm bg-primary text-primary-foreground overflow-hidden">
               <CardHeader>
                 <CardTitle className="text-lg">Run Payroll</CardTitle>
                 <CardDescription className="text-primary-foreground/80">
@@ -177,10 +177,15 @@ export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { 
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="p-4 bg-white/10 rounded-xl space-y-2 mb-6 text-center">
-                  <div className="text-xs opacity-70 mb-1">Estimated Batch Total</div>
-                  <div className="text-2xl font-black">{estimatedSTX} STX</div>
-                  <div className="text-[10px] opacity-60 font-bold">${totalMonthlyUSD.toLocaleString()} (monthly)</div>
+                <div className="p-4 bg-white/10 rounded-xl space-y-3 mb-6">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm opacity-80">Total Due</span>
+                    <span className="text-xl font-bold">{estimatedSTX} STX</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm opacity-80">Estimated Fiat</span>
+                    <span className="text-sm font-medium">~${totalMonthlyUSD.toLocaleString()}</span>
+                  </div>
                 </div>
                 <Link href="/dashboard/payroll/create" className="block">
                   <Button

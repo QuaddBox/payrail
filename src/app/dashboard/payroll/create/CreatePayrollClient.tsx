@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from "react"
-import { Send, UserPlus, Wallet, Calendar, AlertCircle } from "lucide-react"
+import { Send, UserPlus, Wallet, AlertCircle, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -17,7 +17,8 @@ import {
 import { useStacks } from "@/hooks/useStacks"
 import { useNotification } from "@/components/NotificationProvider"
 import { getTeamMembers } from "@/app/actions/team"
-import { Loader2, Search } from "lucide-react"
+import { notifyPaymentSent } from "@/app/actions/payroll"
+import { PaymentSuccessModal } from "@/components/ui/PaymentSuccessModal"
 
 export default function CreatePayrollPage() {
   const { isConnected, address, connectWallet, executePayroll, transferBTC, getSTXBalance, getSTXPrice, getBTCPrice } = useStacks()
@@ -32,7 +33,21 @@ export default function CreatePayrollPage() {
   const [stxPrice, setStxPrice] = React.useState(0)
   const [btcPrice, setBtcPrice] = React.useState(0)
   const [balance, setBalance] = React.useState<number | null>(null)
-  const [scheduleType, setScheduleType] = React.useState("one-time")
+  
+  // Success modal state
+  const [successModal, setSuccessModal] = React.useState<{
+    isOpen: boolean
+    recipientName: string
+    amount: string
+    currency: 'STX' | 'BTC'
+    txId: string
+  }>({
+    isOpen: false,
+    recipientName: '',
+    amount: '',
+    currency: 'STX',
+    txId: ''
+  })
 
   React.useEffect(() => {
     setIsMounted(true)
@@ -76,32 +91,77 @@ export default function CreatePayrollPage() {
 
     try {
       setIsSubmitting(true)
+      
+      const selectedRecipient = recipients.find((r) => 
+        (currency === 'STX' ? r.wallet_address : (r.btc_address || r.wallet_address)) === recipient
+      )
+      const recipientName = selectedRecipient?.name || 'Recipient'
+      
       if (currency === 'STX') {
-        await executePayroll(recipient, parseFloat(amount))
+        await executePayroll(recipient, parseFloat(amount), async (data: any) => {
+            const txId = data.txId || ""
+            // Show success modal
+            setSuccessModal({
+              isOpen: true,
+              recipientName,
+              amount,
+              currency: 'STX',
+              txId
+            })
+            // Send email notification to recipient
+            await notifyPaymentSent({
+              recipientWallet: recipient,
+              amount,
+              currency: 'STX',
+              txId
+            })
+            // Clear form
+            setRecipient("")
+            setAmount("")
+            // Refresh wallet balance after a short delay
+            setTimeout(async () => {
+              if (address) {
+                const newBalance = await getSTXBalance(address)
+                setBalance(newBalance)
+              }
+            }, 3000)
+        })
       } else {
-        await transferBTC(recipient, parseFloat(amount))
+        await transferBTC(recipient, parseFloat(amount), async (data: any) => {
+             const txId = data.txId || ""
+             // Show success modal
+             setSuccessModal({
+               isOpen: true,
+               recipientName,
+               amount,
+               currency: 'BTC',
+               txId
+             })
+             // Send email notification to recipient
+             await notifyPaymentSent({
+               recipientWallet: recipient,
+               amount,
+               currency: 'BTC',
+               txId
+             })
+             setRecipient("")
+             setAmount("")
+        })
       }
-    } catch (err) {
-      // Handled by useStacks
+    } catch (err: any) {
+      console.error("Create Payroll Error:", err)
+      showNotification('error', 'Payment Error', err.message || 'An unexpected error occurred.')
     } finally {
       setIsSubmitting(false)
     }
   }
-  const daysOfWeek = [
-    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
-  ]
-  
-  const daysOfMonth = Array.from({ length: 31 }, (_, i) => i + 1)
 
   if (!isMounted) return null
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Run Payroll</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Execute {currency} payments to your registered recipients.</p>
-        </div>
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+      {/* Currency Toggle */}
+      <div className="flex justify-end">
         <div className="flex bg-accent rounded-xl p-1 shrink-0">
           <Button 
             variant={currency === 'STX' ? 'default' : 'ghost'} 
@@ -134,7 +194,28 @@ export default function CreatePayrollPage() {
                 <Label htmlFor="recipient">Select Recipient Wallet</Label>
                 <div className="relative">
                   <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Select onValueChange={setRecipient}>
+                  <Select onValueChange={(val) => {
+                    setRecipient(val)
+                    // Auto-fill amount from recipient's rate
+                    const selected = recipients.find((r) => 
+                      (currency === 'STX' ? r.wallet_address : (r.btc_address || r.wallet_address)) === val
+                    )
+                    console.log('Selected recipient:', selected, 'Price:', stxPrice, btcPrice)
+                    if (selected?.rate) {
+                      // Convert USD rate to crypto amount
+                      const usdRate = parseFloat(selected.rate)
+                      const price = currency === 'STX' ? stxPrice : btcPrice
+                      console.log('USD Rate:', usdRate, 'Crypto Price:', price)
+                      if (price > 0) {
+                        const cryptoAmount = (usdRate / price).toFixed(4)
+                        console.log('Setting amount to:', cryptoAmount)
+                        setAmount(cryptoAmount)
+                      } else {
+                        // If price not loaded yet, just set a placeholder
+                        setAmount(usdRate.toString())
+                      }
+                    }
+                  }}>
                     <SelectTrigger className="pl-10 rounded-xl">
                       <SelectValue placeholder={isLoading ? "Loading recipients..." : "Search or select a registered wallet"} />
                     </SelectTrigger>
@@ -146,7 +227,7 @@ export default function CreatePayrollPage() {
                       ) : (
                         recipients.map((r) => (
                           <SelectItem key={r.id} value={currency === 'STX' ? r.wallet_address : (r.btc_address || r.wallet_address)}>
-                            {r.name} ({currency === 'STX' ? 'STX' : 'BTC'})
+                            {r.name} ({currency === 'STX' ? 'STX' : 'BTC'}) {r.rate ? `- $${r.rate}/mo` : ''}
                           </SelectItem>
                         ))
                       )}
@@ -155,8 +236,7 @@ export default function CreatePayrollPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
+              <div className="space-y-2">
                   <Label htmlFor="amount">Amount ({currency})</Label>
                   <div className="relative">
                     <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -168,54 +248,14 @@ export default function CreatePayrollPage() {
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                     />
+                    {amount && currentPrice > 0 && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                        ≈ ${(parseFloat(amount) * currentPrice).toFixed(2)}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="schedule">Schedule Type</Label>
-                  <Select defaultValue="one-time" onValueChange={setScheduleType}>
-                    <SelectTrigger className="rounded-xl">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="one-time">One-time Payment</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
 
-              {scheduleType === "weekly" && (
-                <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
-                  <Label htmlFor="dayOfWeek">Payout Day (Weekly)</Label>
-                  <Select defaultValue="Monday">
-                    <SelectTrigger className="rounded-xl">
-                      <SelectValue placeholder="Select day" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {daysOfWeek.map(day => (
-                        <SelectItem key={day} value={day}>{day}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {scheduleType === "monthly" && (
-                <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
-                  <Label htmlFor="dayOfMonth">Payout Day (Monthly)</Label>
-                  <Select defaultValue="1">
-                    <SelectTrigger className="rounded-xl">
-                      <SelectValue placeholder="Select date" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {daysOfMonth.map(day => (
-                        <SelectItem key={day} value={day.toString()}>Day {day}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
 
               <div className="space-y-2">
                 <Label htmlFor="memo">Memo / Reference (Optional)</Label>
@@ -271,6 +311,15 @@ export default function CreatePayrollPage() {
           </Card>
         </div>
       </div>
+
+      <PaymentSuccessModal
+        isOpen={successModal.isOpen}
+        onClose={() => setSuccessModal(prev => ({ ...prev, isOpen: false }))}
+        recipientName={successModal.recipientName}
+        amount={successModal.amount}
+        currency={successModal.currency}
+        txId={successModal.txId}
+      />
     </div>
   )
 }

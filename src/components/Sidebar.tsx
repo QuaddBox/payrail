@@ -43,8 +43,7 @@ export function Sidebar() {
   const businessLinks: SidebarItem[] = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Organization', href: '/dashboard/organization', icon: Building2 },
-    { name: 'Run Payroll', href: '/dashboard/payroll/create', icon: Send },
-    { name: 'Scheduled', href: '/dashboard/payroll/scheduled', icon: Calendar },
+    { name: 'Payroll', href: '/dashboard/payroll', icon: Send },
     { name: 'Recipients', href: '/dashboard/recipients', icon: Users },
     { name: 'History', href: '/dashboard/history', icon: History },
   ]
@@ -94,19 +93,25 @@ export function Sidebar() {
           <p className={cn("text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2", isCollapsed && "hidden")}>
             Menu
           </p>
-          {links.map((item) => (
+          {links.map((item) => {
+            // Special handling for Payroll to match sub-routes
+            const isActive = item.href === '/dashboard/payroll' 
+              ? pathname.startsWith('/dashboard/payroll')
+              : pathname === item.href
+            
+            return (
             <Link key={item.name} href={item.href}>
               <div className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-xl transition-all group",
-                pathname === item.href 
+                isActive 
                   ? "bg-primary/10 text-primary" 
                   : "text-muted-foreground hover:bg-accent hover:text-foreground"
               )}>
-                <item.icon className={cn("h-5 w-5 shrink-0", pathname === item.href ? "text-primary" : "group-hover:text-foreground")} />
+                <item.icon className={cn("h-5 w-5 shrink-0", isActive ? "text-primary" : "group-hover:text-foreground")} />
                 {!isCollapsed && <span className="text-sm font-medium">{item.name}</span>}
               </div>
             </Link>
-          ))}
+          )})}
         </div>
 
         {/* Settings Nav */}

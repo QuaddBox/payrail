@@ -13,6 +13,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { cn } from "@/lib/utils"
 import { motion } from "framer-motion"
 import { DataTable } from "@/components/dashboard/DataTable"
+import { formatTxStatus, TransactionDetailsModal, enrichTransaction, type EnrichedTransaction, truncateAddress } from "./ActionModals"
+import { getTeamMembers, getTeamProfile } from "@/app/actions/team"
+import { Eye } from "lucide-react"
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -35,10 +38,11 @@ import { useStacks } from "@/hooks/useStacks"
 
 export function HistoryClient({ initialTransactions = [] }: { initialTransactions?: any[] }) {
   const [activeTab, setActiveTab] = React.useState<'all' | 'sent' | 'received'>('all')
-  const { address, getRecentTransactions, isTestnet } = useStacks()
-  const [txs, setTxs] = React.useState<any[]>(initialTransactions)
-  const [isLoading, setIsLoading] = React.useState(txs.length === 0)
+  const { address, getRecentTransactions, isTestnet, getBusinessInfo, getSTXPrice } = useStacks()
+  const [txs, setTxs] = React.useState<EnrichedTransaction[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
   const [isMounted, setIsMounted] = React.useState(false)
+  const [selectedTx, setSelectedTx] = React.useState<EnrichedTransaction | null>(null)
 
   React.useEffect(() => {
     setIsMounted(true)
@@ -48,30 +52,35 @@ export function HistoryClient({ initialTransactions = [] }: { initialTransaction
     async function load() {
         if (address) {
             setIsLoading(true)
-            const data = await getRecentTransactions(address)
-            setTxs(data || [])
-            setIsLoading(false)
+            try {
+                const [rawTxs, { data: members }, { data: profile }, businessInfo, price] = await Promise.all([
+                    getRecentTransactions(address),
+                    getTeamMembers(),
+                    getTeamProfile(),
+                    getBusinessInfo(address),
+                    getSTXPrice()
+                ]);
+                
+                const orgName = profile?.organization_name || profile?.full_name || "My Business";
+
+                const enriched = (rawTxs || []).map((tx: any) => enrichTransaction(tx, members || [], orgName, address, price));
+                setTxs(enriched)
+            } catch (e) {
+                console.error("Failed to load history", e)
+            } finally {
+                setIsLoading(false)
+            }
         }
     }
-    if (txs.length === 0 && address) load()
-  }, [address, getRecentTransactions, txs.length])
+    load()
+  }, [address, getRecentTransactions, getBusinessInfo, getSTXPrice])
 
-  // Process transactions for display
-  const transactions = txs.map(tx => {
-    const isSent = tx.sender_address === address
-    const amount = isSent 
-      ? (tx.stx_sent || tx.token_transfer?.amount || 0) 
-      : (tx.stx_received || tx.token_transfer?.amount || 0)
-    
-    return {
-      id: tx.tx_id,
-      type: isSent ? "sent" : "received",
-      name: isSent ? (tx.tx_type === 'smart_contract' ? (tx.contract_call?.function_name || 'Call') : 'Transfer') : 'Internal',
-      amount: `${(Number(amount) / 1_000_000).toLocaleString()} STX`,
-      date: new Date(tx.burn_block_time * 1000).toLocaleDateString(),
-      status: tx.tx_status === 'success' ? 'Success' : 'Pending',
-      txid: tx.tx_id
-    }
+  // Filter for display
+  const transactions = txs.filter(t => {
+      if (activeTab === 'all') return true
+      if (activeTab === 'sent') return t.senderAddress === address
+      if (activeTab === 'received') return t.recipientAddress === address // Simplification, logic inside enrich handles roles
+      return true
   })
 
   if (!isMounted) return null
@@ -119,34 +128,38 @@ export function HistoryClient({ initialTransactions = [] }: { initialTransaction
           </CardHeader>
           <CardContent>
             <DataTable 
-              data={transactions.filter((t: any) => activeTab === 'all' || t.type === activeTab)}
-              pageSize={5}
+              data={transactions}
+              pageSize={10}
               columns={[
                 {
-                  header: "Activity",
-                  accessorKey: (tx: any) => (
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "h-8 w-8 rounded-full flex items-center justify-center",
-                        tx.type === 'sent' ? "bg-orange-100 text-orange-600" : "bg-green-100 text-green-600"
-                      )}>
-                        {tx.type === 'sent' ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownLeft className="h-4 w-4" />}
-                      </div>
-                      <span className="font-bold capitalize">{tx.type}</span>
+                  header: "Tx ID",
+                  accessorKey: (tx: EnrichedTransaction) => <span className="font-mono text-xs text-muted-foreground">{truncateAddress(tx.txId)}</span>
+                },
+                {
+                  header: "Organization",
+                  accessorKey: (tx: EnrichedTransaction) => (
+                    <div className="flex flex-col">
+                        <span className="font-semibold">{tx.senderName}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">{truncateAddress(tx.senderAddress)}</span>
                     </div>
                   )
                 },
                 {
-                  header: "Recipient/Sender",
-                  accessorKey: (tx: any) => <span className="font-semibold">{tx.name}</span>
+                  header: "Recipient",
+                  accessorKey: (tx: EnrichedTransaction) => (
+                    <div className="flex flex-col">
+                        <span className="font-semibold">{tx.recipientName}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">{truncateAddress(tx.recipientAddress)}</span>
+                    </div>
+                  )
                 },
                 {
                   header: "Status",
-                  accessorKey: (tx: any) => (
+                  accessorKey: (tx: EnrichedTransaction) => (
                     <span className={cn(
                       "px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                      tx.status === 'Success' ? "bg-green-100 text-green-700 dark:bg-green-950/30" :
-                      tx.status === 'Pending' ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/30" :
+                      tx.rawStatus === 'success' ? "bg-green-100 text-green-700 dark:bg-green-950/30" :
+                      tx.rawStatus === 'pending' ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/30" :
                       "bg-red-100 text-red-700 dark:bg-red-950/30"
                     )}>
                       {tx.status}
@@ -155,12 +168,17 @@ export function HistoryClient({ initialTransactions = [] }: { initialTransaction
                 },
                 {
                   header: "Amount",
-                  accessorKey: (tx: any) => (
+                  accessorKey: (tx: EnrichedTransaction) => (
                     <span className={cn(
                       "font-mono font-bold",
-                      tx.type === 'received' ? "text-green-600" : ""
+                      tx.senderAddress === address ? "" : "text-green-600"
                     )}>
-                      {tx.type === 'received' ? '+' : '-'}{tx.amount}
+                      {tx.senderAddress === address ? '-' : '+'}{tx.amount}
+                      {tx.amountUSD && (
+                        <span className="block text-[10px] text-muted-foreground font-medium">
+                          ≈ {tx.amountUSD}
+                        </span>
+                      )}
                     </span>
                   )
                 },
@@ -171,10 +189,15 @@ export function HistoryClient({ initialTransactions = [] }: { initialTransaction
                 {
                   header: "",
                   className: "text-right",
-                  accessorKey: () => (
-                    <Button variant="ghost" size="icon" className="h-8 w-8 group-hover:opacity-100 transition-opacity">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Button>
+                  accessorKey: (tx: EnrichedTransaction) => (
+                    <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.open(tx.explorerLink, '_blank')}>
+                            <ExternalLink className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => setSelectedTx(tx)}>
+                            <Eye className="h-4 w-4" />
+                        </Button>
+                    </div>
                   )
                 }
               ]}
@@ -182,6 +205,11 @@ export function HistoryClient({ initialTransactions = [] }: { initialTransaction
           </CardContent>
         </Card>
       </motion.div>
+      <TransactionDetailsModal 
+        isOpen={!!selectedTx} 
+        onClose={() => setSelectedTx(null)} 
+        transaction={selectedTx} 
+      />
     </motion.div>
   )
 }

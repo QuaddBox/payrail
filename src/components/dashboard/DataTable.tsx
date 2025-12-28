@@ -33,38 +33,40 @@ export function DataTable<T>({ columns, data, pageSize = 5 }: DataTableProps<T>)
   return (
     <div className="space-y-4">
       <div className="rounded-xl border bg-card overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent bg-accent/5">
-              {columns.map((column, idx) => (
-                <TableHead key={idx} className={column.className}>
-                  {column.header}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {currentData.length > 0 ? (
-              currentData.map((row, rowIdx) => (
-                <TableRow key={rowIdx} className="group hover:bg-accent/30 transition-colors">
-                  {columns.map((column, colIdx) => (
-                    <TableCell key={colIdx} className={column.className}>
-                      {typeof column.accessorKey === 'function' 
-                        ? column.accessorKey(row) 
-                        : (row[column.accessorKey] as React.ReactNode)}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                  No results found.
-                </TableCell>
+        <div className="overflow-x-auto custom-scrollbar">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent bg-accent/5">
+                {columns.map((column, idx) => (
+                  <TableHead key={idx} className={column.className}>
+                    {column.header}
+                  </TableHead>
+                ))}
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {currentData.length > 0 ? (
+                currentData.map((row, rowIdx) => (
+                  <TableRow key={rowIdx} className="group hover:bg-accent/30 transition-colors">
+                    {columns.map((column, colIdx) => (
+                      <TableCell key={colIdx} className={column.className}>
+                        {typeof column.accessorKey === 'function' 
+                          ? column.accessorKey(row) 
+                          : (row[column.accessorKey] as React.ReactNode)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                    No results found.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
       {totalPages > 1 && (

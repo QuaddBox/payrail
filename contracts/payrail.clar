@@ -9,6 +9,8 @@
 (define-constant ERR-ORG-ALREADY-EXISTS (err u103))
 (define-constant ERR-INSUFFICIENT-FUNDS (err u104))
 (define-constant ERR-INVALID-AMOUNT (err u105))
+(define-constant ERR-LIST-MISMATCH (err u106))
+(define-constant ERR-TRANSFER-FAILED (err u107))
 
 ;; Data Maps
 (define-map businesses principal { registered: bool, org-id: (optional uint) })
@@ -72,19 +74,58 @@
     ;; 1. Check if caller owns an organization
     (asserts! (is-some (get org-id business)) ERR-NOT-AUTHORIZED)
     
-    ;; 2. Validate freelancer is registered (per user request)
-    (asserts! (is-freelancer-registered recipient) ERR-NOT-REGISTERED)
-    
-    ;; 3. Validate amount
+    ;; 2. Validate amount
     (asserts! (> amount u0) ERR-INVALID-AMOUNT)
     
-    ;; 4. Transfer STX
+    ;; 3. Transfer STX
     (try! (stx-transfer? amount caller recipient))
     
-    ;; 5. Emit Event (Handled automatically by Stacks explorer via internal transfer, 
-    ;; but we could add a custom print here if needed)
-    (print { event: "payroll-payment", helper: caller, recipient: recipient, amount: amount })
+    ;; 4. Emit Event
+    (print { event: "payroll-payment", payer: caller, recipient: recipient, amount: amount })
     
     (ok true)
   )
 )
+
+;; --- Batch Payroll ---
+
+;; Private helper: process a single payment in the batch
+(define-private (process-single-payment 
+  (entry {to: principal, ustx: uint}) 
+  (prev-result (response bool uint)))
+  (match prev-result
+    success (stx-transfer? (get ustx entry) tx-sender (get to entry))
+    error (err error)
+  )
+)
+
+;; Execute Batch Payroll (up to 20 recipients in one transaction)
+(define-public (execute-batch-payroll 
+  (recipients (list 20 {to: principal, ustx: uint}))
+  (period-ref (string-ascii 32)))
+  (let (
+    (caller tx-sender)
+    (business (unwrap! (get-business-info caller) ERR-NOT-REGISTERED))
+    (count (len recipients))
+  )
+    ;; 1. Verify caller owns an organization
+    (asserts! (is-some (get org-id business)) ERR-NOT-AUTHORIZED)
+    
+    ;; 2. Verify list is not empty
+    (asserts! (> count u0) ERR-INVALID-AMOUNT)
+    
+    ;; 3. Execute all transfers using fold (atomic - all or nothing)
+    (try! (fold process-single-payment recipients (ok true)))
+    
+    ;; 4. Emit batch event
+    (print { 
+      event: "batch-payroll", 
+      payer: caller, 
+      recipient-count: count,
+      period: period-ref 
+    })
+    
+    (ok true)
+  )
+)
+
