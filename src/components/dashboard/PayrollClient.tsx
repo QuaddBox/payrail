@@ -106,13 +106,15 @@ export function PayrollClient({ initialRecipients = [] }: { initialRecipients: a
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className="rounded-md h-8 text-xs font-bold opacity-50 cursor-not-allowed"
-                          disabled
+                          className="rounded-md h-8 text-xs font-bold"
+                          onClick={() => {
+                            showNotification('info', 'Coming Soon', 'Bitcoin payments will be available once sBTC launches. Stay tuned!')
+                          }}
                         >
                           BTC
                         </Button>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-[8px] font-black uppercase tracking-tight bg-primary/90 text-primary-foreground px-1.5 py-0.5 rounded-full">
+                        <div className="absolute -top-1 -right-1 pointer-events-none">
+                          <span className="text-[7px] font-black uppercase tracking-tight bg-orange-500 text-white px-1 py-0.5 rounded-full animate-pulse">
                             Soon
                           </span>
                         </div>
