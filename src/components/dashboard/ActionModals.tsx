@@ -301,13 +301,22 @@ export function SendCryptoModal({ isOpen, onClose }: { isOpen: boolean; onClose:
           >
             STX
           </Button>
-          <Button 
-            variant={currency === 'BTC' ? 'default' : 'ghost'} 
-            className="flex-1 rounded-lg h-10 font-bold"
-            onClick={() => setCurrency('BTC')}
-          >
-            BTC
-          </Button>
+          <div className="relative flex-1">
+            <Button 
+              variant="ghost" 
+              className="w-full rounded-lg h-10 font-bold"
+              onClick={() => {
+                showNotification('info', 'Coming Soon', 'Bitcoin payments will be available once sBTC launches. Stay tuned!')
+              }}
+            >
+              BTC
+            </Button>
+            <div className="absolute -top-1 -right-1 pointer-events-none">
+              <span className="text-[7px] font-black uppercase tracking-tight bg-orange-500 text-white px-1 py-0.5 rounded-full animate-pulse">
+                Soon
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -675,13 +684,22 @@ export function ReceiveCryptoModal({ isOpen, onClose }: { isOpen: boolean; onClo
           >
             STX
           </Button>
-          <Button 
-            variant={currency === 'BTC' ? 'default' : 'ghost'} 
-            className="flex-1 rounded-lg h-8 text-xs font-bold"
-            onClick={() => setCurrency('BTC')}
-          >
-            BTC
-          </Button>
+          <div className="relative flex-1">
+            <Button 
+              variant="ghost" 
+              className="w-full rounded-lg h-8 text-xs font-bold"
+              onClick={() => {
+                showNotification('info', 'Coming Soon', 'Bitcoin receiving will be available once sBTC launches. Stay tuned!')
+              }}
+            >
+              BTC
+            </Button>
+            <div className="absolute -top-1 -right-1 pointer-events-none">
+              <span className="text-[7px] font-black uppercase tracking-tight bg-orange-500 text-white px-1 py-0.5 rounded-full animate-pulse">
+                Soon
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* QR Code Placeholder */}
