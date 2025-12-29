@@ -12,9 +12,16 @@ export default async function ProfileSettingsPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, email_notifications')
     .eq('id', user.id)
     .maybeSingle()
 
-  return <ProfileClient initialUser={user} initialRole={profile?.role} />
+  return (
+    <ProfileClient 
+      initialUser={user} 
+      initialRole={profile?.role} 
+      initialEmailNotifications={profile?.email_notifications ?? true}
+    />
+  )
 }
+

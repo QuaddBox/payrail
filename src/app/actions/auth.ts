@@ -172,3 +172,31 @@ export async function updateProfile(formData: {
     return { error: err.message || "An unexpected error occurred during update." }
   }
 }
+
+export async function updateEmailNotifications(enabled: boolean) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Not authenticated" }
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ 
+        email_notifications: enabled,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', user.id)
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    return { success: true }
+  } catch (err: any) {
+    return { error: err.message || "An unexpected error occurred." }
+  }
+}
+

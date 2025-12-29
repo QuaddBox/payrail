@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-import { User, Mail, Building2, Bell, Shield, Loader2, AlertTriangle } from "lucide-react"
-import { deleteAccount, updateProfile } from "@/app/actions/auth"
+import { User, Mail, Building2, Loader2, AlertTriangle } from "lucide-react"
+import { deleteAccount, updateProfile, updateEmailNotifications } from "@/app/actions/auth"
 import { Modal } from "@/components/dashboard/ActionModals"
 import { useNotification } from "@/components/NotificationProvider"
 import { useRouter } from "next/navigation"
@@ -17,10 +17,12 @@ import { LogOut } from "lucide-react"
 
 export function ProfileClient({ 
   initialUser, 
-  initialRole 
+  initialRole,
+  initialEmailNotifications = true
 }: { 
   initialUser: any, 
-  initialRole: string | null 
+  initialRole: string | null,
+  initialEmailNotifications?: boolean
 }) {
   const { showNotification } = useNotification()
   const router = useRouter()
@@ -28,6 +30,8 @@ export function ProfileClient({
   const [isDeleting, setIsDeleting] = React.useState(false)
   const [showConfirmDelete, setShowConfirmDelete] = React.useState(false)
   const [isUpdating, setIsUpdating] = React.useState(false)
+  const [emailNotifications, setEmailNotifications] = React.useState(initialEmailNotifications)
+  const [isTogglingNotifications, setIsTogglingNotifications] = React.useState(false)
   const [formData, setFormData] = React.useState({
     full_name: initialUser?.user_metadata?.full_name || "",
     organization: initialUser?.user_metadata?.organization || ""
@@ -74,6 +78,29 @@ export function ProfileClient({
       setIsDeleting(false)
     } finally {
       setShowConfirmDelete(false)
+    }
+  }
+
+  const handleToggleEmailNotifications = async () => {
+    const newValue = !emailNotifications
+    setIsTogglingNotifications(true)
+    setEmailNotifications(newValue) // Optimistic update
+    
+    try {
+      const result = await updateEmailNotifications(newValue)
+      if (result.error) {
+        setEmailNotifications(!newValue) // Revert on error
+        showNotification("error", "Update Failed", result.error)
+      } else {
+        showNotification("success", "Preferences Updated", 
+          newValue ? "Email notifications enabled." : "Email notifications disabled."
+        )
+      }
+    } catch (err) {
+      setEmailNotifications(!newValue) // Revert on error
+      showNotification("error", "Error", "An unexpected error occurred.")
+    } finally {
+      setIsTogglingNotifications(false)
     }
   }
 
@@ -149,7 +176,41 @@ export function ProfileClient({
             </CardContent>
           </Card>
 
-
+          {/* Email Notifications */}
+          <Card className="border-none shadow-sm">
+            <CardHeader>
+              <CardTitle>Notifications</CardTitle>
+              <CardDescription>Manage your email preferences.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div 
+                className={cn(
+                  "flex items-center justify-between p-4 border rounded-xl transition-colors cursor-pointer",
+                  isTogglingNotifications ? "opacity-50" : "hover:bg-accent/50"
+                )}
+                onClick={!isTogglingNotifications ? handleToggleEmailNotifications : undefined}
+              >
+                <div className="flex gap-4">
+                  <div className="h-10 w-10 rounded-lg bg-accent flex items-center justify-center text-muted-foreground">
+                    <Mail className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold">Email Notifications</p>
+                    <p className="text-xs text-muted-foreground">Receive email alerts when payments are sent or received.</p>
+                  </div>
+                </div>
+                <div className={cn(
+                  "w-12 h-6 rounded-full p-1 transition-colors",
+                  emailNotifications ? "bg-primary" : "bg-accent"
+                )}>
+                  <div className={cn(
+                    "h-4 w-4 rounded-full bg-white transition-transform",
+                    emailNotifications ? "translate-x-6" : "translate-x-0"
+                  )} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="space-y-6">

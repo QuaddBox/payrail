@@ -339,6 +339,19 @@ export async function notifyPaymentSent(data: {
 
   if (!user) return { error: "Not authenticated" }
 
+  // Check if the sender has email notifications enabled
+  const { data: senderProfile } = await supabase
+    .from('profiles')
+    .select('email_notifications, organization_name')
+    .eq('id', user.id)
+    .single()
+
+  // If notifications are disabled, skip sending
+  if (senderProfile?.email_notifications === false) {
+    console.log('[notifyPaymentSent] Email notifications disabled for user:', user.id)
+    return { success: true, emailSent: false, reason: 'notifications_disabled' }
+  }
+
   // Get recipient info by wallet address
   const { data: recipient } = await supabase
     .from('team_members')
@@ -352,14 +365,7 @@ export async function notifyPaymentSent(data: {
     return { success: true, emailSent: false }
   }
 
-  // Get organization name
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('organization_name')
-    .eq('id', user.id)
-    .single()
-
-  const orgName = profile?.organization_name || 'Your Organization'
+  const orgName = senderProfile?.organization_name || 'Your Organization'
 
   // Send email
   await sendPaymentSentEmail({
@@ -373,3 +379,4 @@ export async function notifyPaymentSent(data: {
 
   return { success: true, emailSent: true }
 }
+
