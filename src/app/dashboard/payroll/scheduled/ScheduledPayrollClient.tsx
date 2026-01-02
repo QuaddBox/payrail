@@ -147,6 +147,9 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
       // Update status to processing
       await updateScheduleStatus(schedule.id, 'processing')
 
+      // DEBUG: Log full schedule data to see if email is present
+      console.log('[BatchPayroll] Full schedule data:', JSON.stringify(schedule, null, 2))
+
       // Build recipients list for batch payroll
       const recipients = schedule.payroll_schedule_items.map(item => ({
         address: item.team_members.wallet_address,

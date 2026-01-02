@@ -80,10 +80,14 @@ export async function addTeamMember(member: {
     }
   }
 
+  // Normalize email to lowercase for consistency
+  const normalizedEmail = member.email?.toLowerCase().trim()
+
   const { error } = await supabase
     .from('team_members')
     .insert([{
       ...member,
+      email: normalizedEmail,
       organization_id: user.id,
       status: 'Active'
     }])
@@ -136,6 +140,11 @@ export async function updateTeamMember(id: string, updates: any) {
     if (existingMember) {
       return { error: "A recipient with this email already exists in your organization." }
     }
+  }
+
+  // Normalize email to lowercase if being updated
+  if (updates.email) {
+    updates.email = updates.email.toLowerCase().trim()
   }
 
   const { error } = await supabase
