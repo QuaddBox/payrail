@@ -8,6 +8,17 @@
  * 4. Individual payments are shown instead of the aggregated contract call
  */
 
+// Type-safe transaction interface for tests
+interface TestTransaction {
+  tx_type: string;
+  contract_call?: {
+    function_name: string;
+  };
+  token_transfer?: {
+    recipient_address: string;
+  };
+}
+
 describe('Batch Payroll History Display', () => {
   
   describe('Transaction Detection', () => {
@@ -59,7 +70,7 @@ describe('Batch Payroll History Display', () => {
         token_transfer: {
           recipient_address: 'ST...'
         }
-      }
+      } as TestTransaction
       
       const isBatchPayroll = tx.tx_type === 'contract_call' && 
         tx.contract_call?.function_name === 'execute-batch-payroll'
