@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from "react"
-import { AlertTriangle, Trash2, X } from "lucide-react"
+import { AlertTriangle, Loader2, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface ConfirmDialogProps {
@@ -92,9 +92,11 @@ export function ConfirmDialog({
             disabled={isLoading}
           >
             {isLoading ? (
-              <span className="animate-spin mr-2">⏳</span>
-            ) : null}
-            {confirmText}
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Deleting...
+              </>
+            ) : confirmText}
           </Button>
         </div>
       </div>

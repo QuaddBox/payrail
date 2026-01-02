@@ -180,8 +180,9 @@ export async function createPayrollSchedule(data: {
     .single()
   
   const orgName = profile?.organization_name || 'Your Organization'
-  const nextPayDate = new Date(next_run_at).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric'
+  // Use en-GB locale for day/month/year format
+  const nextPayDate = new Date(next_run_at).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric'
   })
 
   // Get member details and send emails

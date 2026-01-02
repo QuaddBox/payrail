@@ -57,7 +57,8 @@ const formatNextRun = (nextRunAt: string | null, status: string) => {
   if (status === 'ready') return 'Ready to Run'
   if (!nextRunAt) return 'Not scheduled'
   const date = new Date(nextRunAt)
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  // Use en-GB locale for day/month/year format
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 export default function ScheduledPayrollPage({ initialRecipients = [] }: { initialRecipients: any[] }) {
@@ -76,6 +77,7 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
   const [isSubmitting, setIsSubmitting] = React.useState<string | null>(null)
   const [isMounted, setIsMounted] = React.useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false)
+  const [isDeleting, setIsDeleting] = React.useState(false)
   const [stxPrice, setStxPrice] = React.useState(0)
 
   // Load schedules
@@ -240,6 +242,7 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
   const handleDeleteConfirm = async () => {
     if (!deleteConfirm.scheduleId) return
     
+    setIsDeleting(true)
     try {
       await deletePayrollSchedule(deleteConfirm.scheduleId)
       showNotification('success', 'Deleted', 'Schedule has been deleted.')
@@ -247,6 +250,7 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
     } catch (err: any) {
       showNotification('error', 'Error', err.message)
     } finally {
+      setIsDeleting(false)
       setDeleteConfirm({ isOpen: false, scheduleId: null, scheduleName: '' })
     }
   }
@@ -347,8 +351,8 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
             // Check if schedule is due (next_run_at date has passed or is today)
             const isDue = schedule.next_run_at ? new Date(schedule.next_run_at) <= new Date() : false
             
-            // Format date range
-            const formatDateShort = (date: string) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            // Format date range (use en-GB for day/month format)
+            const formatDateShort = (date: string) => new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
             const dateRange = schedule.start_date 
               ? schedule.end_date 
                 ? `${formatDateShort(schedule.start_date)} - ${formatDateShort(schedule.end_date)}`
@@ -542,6 +546,7 @@ export default function ScheduledPayrollPage({ initialRecipients = [] }: { initi
         confirmText="Delete"
         cancelText="Keep it"
         variant="danger"
+        isLoading={isDeleting}
       />
     </div>
   )
