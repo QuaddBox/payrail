@@ -39,9 +39,11 @@ export function FreelancerEarningsStats() {
   }, [user, supabase]);
 
   // Check if the connected wallet matches the user's stored wallet
-  const isUserWalletConnected = isConnected && 
-    storedWalletAddress && 
-    connectedAddress === storedWalletAddress;
+  // For new users, storedWalletAddress is null - we still show as connected
+  const isUserWalletConnected = isConnected && connectedAddress && (
+    !storedWalletAddress || // New user, no stored wallet yet
+    connectedAddress === storedWalletAddress // Returning user, addresses match
+  );
 
   React.useEffect(() => {
     async function load() {
@@ -143,9 +145,11 @@ export function RecentEarningsList() {
   }, [user, supabase]);
 
   // Check if the connected wallet matches the user's stored wallet
-  const isUserWalletConnected = isConnected && 
-    storedWalletAddress && 
-    connectedAddress === storedWalletAddress;
+  // For new users, storedWalletAddress is null - we still show as connected
+  const isUserWalletConnected = isConnected && connectedAddress && (
+    !storedWalletAddress || // New user, no stored wallet yet
+    connectedAddress === storedWalletAddress // Returning user, addresses match
+  );
 
   // Fetch organization names for sender addresses
   const fetchSenderNames = React.useCallback(async (addresses: string[]) => {
@@ -201,13 +205,48 @@ export function RecentEarningsList() {
   const currentEarnings = allEarnings.slice(startIndex, startIndex + itemsPerPage);
   const totalPages = Math.ceil(allEarnings.length / itemsPerPage);
 
+  // Download CSV function
+  const downloadCSV = () => {
+    if (allEarnings.length === 0) return;
+    
+    const headers = ['Sender', 'Reference', 'Amount', 'Date'];
+    const csvRows = [
+      headers.join(','),
+      ...allEarnings.map(e => [
+        `"${e.from}"`,
+        `"${e.ref}"`,
+        `"${e.amount}"`,
+        `"${e.date}"`
+      ].join(','))
+    ];
+    
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `payrail-earnings-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <Card className="border-none shadow-sm overflow-hidden">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">Recent Earnings</CardTitle>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="text-xs" disabled={!isUserWalletConnected}>Download CSV</Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-xs" 
+              disabled={!isUserWalletConnected || allEarnings.length === 0}
+              onClick={downloadCSV}
+            >
+              Download CSV
+            </Button>
             <Link href="/dashboard/history">
               <Button variant="ghost" size="sm" className="text-xs text-primary font-bold">View All</Button>
             </Link>
