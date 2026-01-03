@@ -121,6 +121,7 @@ export function RecentEarningsList() {
   
   const [storedWalletAddress, setStoredWalletAddress] = React.useState<string | null>(null);
   const [txs, setTxs] = React.useState<any[]>([]);
+  const [senderNames, setSenderNames] = React.useState<Record<string, string>>({});
   const [currentPage, setCurrentPage] = React.useState(1);
   const [isLoading, setIsLoading] = React.useState(true);
   const itemsPerPage = 5;
@@ -146,6 +147,25 @@ export function RecentEarningsList() {
     storedWalletAddress && 
     connectedAddress === storedWalletAddress;
 
+  // Fetch organization names for sender addresses
+  const fetchSenderNames = React.useCallback(async (addresses: string[]) => {
+    if (addresses.length === 0) return;
+    
+    const uniqueAddresses = [...new Set(addresses)];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('wallet_address, organization_name, full_name')
+      .in('wallet_address', uniqueAddresses);
+    
+    if (profiles) {
+      const names: Record<string, string> = {};
+      profiles.forEach((p: any) => {
+        names[p.wallet_address] = p.organization_name || p.full_name || p.wallet_address.substring(0, 10) + '...';
+      });
+      setSenderNames(names);
+    }
+  }, [supabase]);
+
   React.useEffect(() => {
     async function load() {
       if (isUserWalletConnected && connectedAddress) {
@@ -154,18 +174,24 @@ export function RecentEarningsList() {
         // Filter for incoming payments
         const incoming = data?.filter((tx: any) => tx.sender_address !== connectedAddress) || [];
         setTxs(incoming);
+        
+        // Fetch sender names for all unique sender addresses
+        const senderAddresses = incoming.map((tx: any) => tx.sender_address);
+        await fetchSenderNames(senderAddresses);
+        
         setIsLoading(false);
       } else {
         // No wallet connected or doesn't match - clear transactions
         setTxs([]);
+        setSenderNames({});
         setIsLoading(false);
       }
     }
     load();
-  }, [isUserWalletConnected, connectedAddress, getRecentTransactions]);
+  }, [isUserWalletConnected, connectedAddress, getRecentTransactions, fetchSenderNames]);
 
   const allEarnings = txs.map(tx => ({
-    from: tx.sender_address.substring(0, 10) + '...',
+    from: senderNames[tx.sender_address] || tx.sender_address.substring(0, 10) + '...',
     ref: tx.tx_type === 'smart_contract' ? (tx.contract_call?.function_name || 'Payment') : 'Transfer',
     amount: `+${(Number(tx.stx_received || tx.token_transfer?.amount || 0) / 1_000_000).toLocaleString()} STX`,
     date: new Date(tx.burn_block_time * 1000).toLocaleDateString()
