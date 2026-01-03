@@ -35,9 +35,11 @@ export const WalletConnect = () => {
   }, [user, supabase])
 
   // Check if the connected wallet matches user's stored wallet
-  const isUserWalletConnected = isConnected && 
-    storedWalletAddress && 
-    stacksAddress === storedWalletAddress
+  // For new users, storedWalletAddress is null - we still show as connected and will sync
+  const isUserWalletConnected = isConnected && stacksAddress && (
+    !storedWalletAddress || // New user, no stored wallet yet
+    stacksAddress === storedWalletAddress // Returning user, addresses match
+  )
 
   // Sync wallet address to Supabase when user connects
   React.useEffect(() => {
