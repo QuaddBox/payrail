@@ -110,6 +110,35 @@ export function PaymentsClient({ initialTransactions = [] }: { initialTransactio
 
   const totalRevenueSTX = incomingTransactions.reduce((acc, tx) => acc + (Number(tx.stx_received || tx.token_transfer?.amount || 0) / 1_000_000), 0)
 
+  // Download Earnings Report as CSV
+  const downloadEarningsReport = () => {
+    if (incomingPayments.length === 0) return;
+    
+    const headers = ['Sender', 'Reference', 'Status', 'Amount', 'Fiat Estimate', 'Date'];
+    const csvRows = [
+      headers.join(','),
+      ...incomingPayments.map(p => [
+        `"${p.from}"`,
+        `"${p.project}"`,
+        `"${p.status}"`,
+        `"${p.amount}"`,
+        `"${p.fiat}"`,
+        `"${p.date}"`
+      ].join(','))
+    ];
+    
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `payrail-earnings-report-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   if (!isMounted) return null
 
   // Show not connected state
@@ -148,7 +177,13 @@ export function PaymentsClient({ initialTransactions = [] }: { initialTransactio
           <p className="text-muted-foreground mt-1">Detailed record of Bitcoin & STX received for your services.</p>
         </div>
         <div className="flex items-center gap-2">
-           <Button variant="outline" size="sm" className="rounded-xl">
+           <Button 
+             variant="outline" 
+             size="sm" 
+             className="rounded-xl"
+             onClick={downloadEarningsReport}
+             disabled={incomingPayments.length === 0}
+           >
              <Download className="mr-2 h-4 w-4" />
              Earnings Report
            </Button>
