@@ -3,7 +3,6 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import QRCode from "react-qr-code"
 import {
   Plus,
   Send,
@@ -709,24 +708,25 @@ export function ReceiveCryptoModal({ isOpen, onClose }: { isOpen: boolean; onClo
           </div>
         </div>
 
-        {/* QR Code */}
+        {/* QR Code Placeholder */}
         <div className="relative group">
-          <div className="w-48 h-48 bg-white p-4 rounded-3xl shadow-lg flex items-center justify-center">
-            {address ? (
-              <QRCode
-                value={address}
-                size={160}
-                style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                bgColor="#ffffff"
-                fgColor="#000000"
-                level="M"
-              />
-            ) : (
-              <div className="flex flex-col items-center text-muted-foreground">
-                <Wallet className="h-8 w-8 mb-2" />
-                <span className="text-xs">Connect wallet</span>
-              </div>
-            )}
+          <div className="w-48 h-48 bg-white p-4 rounded-3xl shadow-sm border-4 border-dashed border-muted-foreground/20 flex items-center justify-center">
+             <div className="grid grid-cols-6 grid-rows-6 gap-1 w-full h-full opacity-80">
+                {/* Simulated QR Pattern */}
+                {[...Array(36)].map((_, i) => (
+                    <div key={i} className={`bg-black rounded-sm ${Math.random() > 0.5 ? 'opacity-0' : 'opacity-100'}`} />
+                ))}
+            </div>
+             {/* Center Logo Overlay */}
+             <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                    {currency === 'STX' ? (
+                       <ArrowDownLeft className="h-6 w-6 text-primary" />
+                    ) : (
+                       <span className="font-bold text-lg text-orange-500">₿</span>
+                    )}
+                </div>
+             </div>
           </div>
         </div>
 
