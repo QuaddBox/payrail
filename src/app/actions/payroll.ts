@@ -9,7 +9,7 @@ export interface PayrollSchedule {
   id: string
   organization_id: string
   name: string
-  frequency: 'weekly' | 'monthly'
+  frequency: 'minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly'
   pay_day: number
   status: 'draft' | 'ready' | 'processing' | 'paid'
   next_run_at: string | null
@@ -103,31 +103,42 @@ export async function getPayrollScheduleById(id: string) {
 }
 
 // Calculate next run date based on frequency and pay day
-function calculateNextRunDate(frequency: 'weekly' | 'monthly', payDay: number): string {
+function calculateNextRunDate(frequency: 'minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly', payDay: number): string {
   const now = new Date()
   const next = new Date(now)
   
-  if (frequency === 'weekly') {
+  if (frequency === 'minutes') {
+    // Run every 5 minutes (for testing)
+    next.setMinutes(now.getMinutes() + 5)
+  } else if (frequency === 'hourly') {
+    // Run every hour at the top of the hour
+    next.setHours(now.getHours() + 1, 0, 0, 0)
+  } else if (frequency === 'daily') {
+    // Run every day at 9 AM
+    next.setDate(now.getDate() + 1)
+    next.setHours(9, 0, 0, 0)
+  } else if (frequency === 'weekly') {
     // payDay: 1=Monday, 7=Sunday
     const currentDay = now.getDay() || 7 // Convert Sunday from 0 to 7
     const daysUntil = payDay >= currentDay ? payDay - currentDay : 7 - currentDay + payDay
     next.setDate(now.getDate() + (daysUntil === 0 ? 7 : daysUntil))
+    next.setHours(9, 0, 0, 0) // Set to 9 AM
   } else {
     // Monthly: payDay is 1-31
     next.setDate(payDay)
     if (next <= now) {
       next.setMonth(next.getMonth() + 1)
     }
+    next.setHours(9, 0, 0, 0) // Set to 9 AM
   }
   
-  next.setHours(9, 0, 0, 0) // Set to 9 AM
   return next.toISOString()
 }
 
 // Create new payroll schedule with items
 export async function createPayrollSchedule(data: {
   name: string
-  frequency: 'weekly' | 'monthly'
+  frequency: 'minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly'
   pay_day: number
   start_date?: string
   end_date?: string
@@ -138,7 +149,9 @@ export async function createPayrollSchedule(data: {
 
   if (!user) return { error: "Not authenticated" }
 
-  const next_run_at = calculateNextRunDate(data.frequency, data.pay_day)
+  // For minutes/hourly/daily frequencies, pay_day is not used, default to 0
+  const sanitizedPayDay = ['minutes', 'hourly', 'daily'].includes(data.frequency) ? 0 : data.pay_day
+  const next_run_at = calculateNextRunDate(data.frequency, sanitizedPayDay)
 
   // Create schedule
   const { data: schedule, error: scheduleError } = await supabase
@@ -147,7 +160,7 @@ export async function createPayrollSchedule(data: {
       organization_id: user.id,
       name: data.name,
       frequency: data.frequency,
-      pay_day: data.pay_day,
+      pay_day: sanitizedPayDay,
       status: 'draft',
       next_run_at,
       start_date: data.start_date || null,

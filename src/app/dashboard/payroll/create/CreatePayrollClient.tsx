@@ -1,24 +1,25 @@
 'use client'
 
 import * as React from "react"
-import { Send, UserPlus, Wallet, AlertCircle, Loader2 } from "lucide-react"
+import { Send, Wallet, AlertCircle, Loader2, DollarSign, Plus, X, Users } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 
 import { useStacks } from "@/hooks/useStacks"
 import { useNotification } from "@/components/NotificationProvider"
 import { getTeamMembers } from "@/app/actions/team"
 import { notifyPaymentSent } from "@/app/actions/payroll"
 import { PaymentSuccessModal } from "@/components/ui/PaymentSuccessModal"
+
+interface SelectedRecipient {
+  id: string
+  name: string
+  wallet_address: string
+  amount: string
+}
 
 export default function CreatePayrollPage() {
   const { isConnected, address, connectWallet, executePayroll, getSTXBalance, getSTXPrice, getBTCPrice } = useStacks()
@@ -27,12 +28,12 @@ export default function CreatePayrollPage() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [isMounted, setIsMounted] = React.useState(false)
   const [recipients, setRecipients] = React.useState<any[]>([])
-  const [amount, setAmount] = React.useState("")
-  const [recipient, setRecipient] = React.useState("")
+  const [selectedRecipients, setSelectedRecipients] = React.useState<SelectedRecipient[]>([])
   const [currency, setCurrency] = React.useState<'STX' | 'BTC'>('STX')
   const [stxPrice, setStxPrice] = React.useState(0)
   const [btcPrice, setBtcPrice] = React.useState(0)
   const [balance, setBalance] = React.useState<number | null>(null)
+  const [memo, setMemo] = React.useState("")
   
   // Success modal state
   const [successModal, setSuccessModal] = React.useState<{
@@ -78,54 +79,83 @@ export default function CreatePayrollPage() {
 
   const currentPrice = currency === 'STX' ? stxPrice : btcPrice
 
+  const toggleRecipient = (recipient: any) => {
+    const exists = selectedRecipients.find(r => r.id === recipient.id)
+    if (exists) {
+      setSelectedRecipients(prev => prev.filter(r => r.id !== recipient.id))
+    } else {
+      // Calculate amount from rate if available
+      let defaultAmount = ""
+      if (recipient.rate && currentPrice > 0) {
+        const usdRate = parseFloat(recipient.rate)
+        defaultAmount = (usdRate / currentPrice).toFixed(4)
+      }
+      setSelectedRecipients(prev => [...prev, {
+        id: recipient.id,
+        name: recipient.name,
+        wallet_address: recipient.wallet_address,
+        amount: defaultAmount
+      }])
+    }
+  }
+
+  const updateRecipientAmount = (id: string, amount: string) => {
+    setSelectedRecipients(prev => prev.map(r => 
+      r.id === id ? { ...r, amount } : r
+    ))
+  }
+
+  const totalAmount = selectedRecipients.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0)
+
   const handleExecutePayroll = async () => {
     if (!isConnected) {
       connectWallet()
       return
     }
 
-    if (!recipient || !amount) {
-      showNotification("error", "Please enter recipient and amount")
+    if (selectedRecipients.length === 0) {
+      showNotification("error", "Please select at least one recipient")
+      return
+    }
+
+    const invalidRecipients = selectedRecipients.filter(r => !r.amount || parseFloat(r.amount) <= 0)
+    if (invalidRecipients.length > 0) {
+      showNotification("error", `Please enter valid amounts for all selected recipients`)
       return
     }
 
     try {
       setIsSubmitting(true)
       
-      const selectedRecipient = recipients.find((r) => 
-        (currency === 'STX' ? r.wallet_address : (r.btc_address || r.wallet_address)) === recipient
-      )
-      const recipientName = selectedRecipient?.name || 'Recipient'
-      
-      // Execute STX payment (BTC is coming soon)
-      await executePayroll(recipient, parseFloat(amount), async (data: any) => {
+      // Execute payments sequentially
+      for (const recipient of selectedRecipients) {
+        await executePayroll(recipient.wallet_address, parseFloat(recipient.amount), async (data: any) => {
           const txId = data.txId || ""
-          // Show success modal
-          setSuccessModal({
-            isOpen: true,
-            recipientName,
-            amount,
-            currency: 'STX',
-            txId
-          })
           // Send email notification to recipient
           await notifyPaymentSent({
-            recipientWallet: recipient,
-            amount,
+            recipientWallet: recipient.wallet_address,
+            amount: recipient.amount,
             currency: 'STX',
             txId
           })
-          // Clear form
-          setRecipient("")
-          setAmount("")
-          // Refresh wallet balance after a short delay
-          setTimeout(async () => {
-            if (address) {
-              const newBalance = await getSTXBalance(address)
-              setBalance(newBalance)
-            }
-          }, 3000)
-      })
+        })
+      }
+
+      // Show success notification
+      const totalPaid = selectedRecipients.reduce((sum, r) => sum + parseFloat(r.amount), 0)
+      showNotification('success', 'Payments Sent!', `Successfully sent ${totalPaid.toFixed(4)} STX to ${selectedRecipients.length} recipient(s)`)
+      
+      // Clear form
+      setSelectedRecipients([])
+      setMemo("")
+      
+      // Refresh wallet balance after a short delay
+      setTimeout(async () => {
+        if (address) {
+          const newBalance = await getSTXBalance(address)
+          setBalance(newBalance)
+        }
+      }, 3000)
     } catch (err: any) {
       console.error("Create Payroll Error:", err)
       showNotification('error', 'Payment Error', err.message || 'An unexpected error occurred.')
@@ -173,92 +203,110 @@ export default function CreatePayrollPage() {
         <div className="lg:col-span-2 space-y-6">
           <Card className="border-none shadow-sm">
             <CardHeader>
-              <CardTitle>Payroll Configuration</CardTitle>
-              <CardDescription>Enter the recipient details and STX amount for this run.</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                Select Recipients
+              </CardTitle>
+              <CardDescription>Choose team members to pay and set individual amounts.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="recipient">Select Recipient Wallet</Label>
-                <div className="relative">
-                  <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Select onValueChange={(val) => {
-                    setRecipient(val)
-                    // Auto-fill amount from recipient's rate
-                    const selected = recipients.find((r) => 
-                      (currency === 'STX' ? r.wallet_address : (r.btc_address || r.wallet_address)) === val
-                    )
-                    console.log('Selected recipient:', selected, 'Price:', stxPrice, btcPrice)
-                    if (selected?.rate) {
-                      // Convert USD rate to crypto amount
-                      const usdRate = parseFloat(selected.rate)
-                      const price = currency === 'STX' ? stxPrice : btcPrice
-                      console.log('USD Rate:', usdRate, 'Crypto Price:', price)
-                      if (price > 0) {
-                        const cryptoAmount = (usdRate / price).toFixed(4)
-                        console.log('Setting amount to:', cryptoAmount)
-                        setAmount(cryptoAmount)
-                      } else {
-                        // If price not loaded yet, just set a placeholder
-                        setAmount(usdRate.toString())
-                      }
-                    }
-                  }}>
-                    <SelectTrigger className="pl-10 rounded-xl">
-                      <SelectValue placeholder={isLoading ? "Loading recipients..." : "Search or select a registered wallet"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {recipients.length === 0 && !isLoading ? (
-                        <div className="p-4 text-center text-sm text-muted-foreground italic">
-                          No recipients found. Please add members first.
-                        </div>
-                      ) : (
-                        recipients.map((r) => (
-                          <SelectItem key={r.id} value={currency === 'STX' ? r.wallet_address : (r.btc_address || r.wallet_address)}>
-                            {r.name} ({currency === 'STX' ? 'STX' : 'BTC'}) {r.rate ? `- $${r.rate}/mo` : ''}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+            <CardContent className="space-y-4">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              </div>
+              ) : recipients.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-medium">No recipients found</p>
+                  <p className="text-sm">Add team members first to make payments.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                  {recipients.map((recipient) => {
+                    const isSelected = selectedRecipients.find(r => r.id === recipient.id)
+                    return (
+                      <div 
+                        key={recipient.id}
+                        className={`flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer hover:border-primary/30 ${
+                          isSelected ? 'border-primary bg-primary/5' : 'border-border/50 bg-accent/30'
+                        }`}
+                        onClick={() => toggleRecipient(recipient)}
+                      >
+                        <Checkbox 
+                          checked={!!isSelected}
+                          onCheckedChange={() => toggleRecipient(recipient)}
+                          className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold truncate">{recipient.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono truncate">
+                            {recipient.wallet_address.substring(0, 12)}...{recipient.wallet_address.slice(-6)}
+                          </p>
+                        </div>
+                        {recipient.rate && (
+                          <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded-lg">
+                            ${recipient.rate}/mo
+                          </span>
+                        )}
+                        {isSelected && (
+                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                            <Input
+                              type="number"
+                              placeholder="0.00"
+                              value={isSelected.amount}
+                              onChange={(e) => updateRecipientAmount(recipient.id, e.target.value)}
+                              className="w-28 h-9 text-right rounded-lg font-mono"
+                            />
+                            <span className="text-xs text-muted-foreground font-bold">{currency}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
-              <div className="space-y-2">
-                  <Label htmlFor="amount">Amount ({currency})</Label>
-                  <div className="relative">
-                    <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      id="amount" 
-                      type="number" 
-                      placeholder="0.00" 
-                      className="pl-10 pr-16 rounded-xl" 
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                    />
-                    {amount && currentPrice > 0 && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                        ≈ ${(parseFloat(amount) * currentPrice).toFixed(2)}
-                      </span>
-                    )}
+              {selectedRecipients.length > 0 && (
+                <div className="pt-4 border-t border-border/50 space-y-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Selected Recipients</span>
+                    <span className="font-bold">{selectedRecipients.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Total Amount</span>
+                    <div className="text-right">
+                      <span className="text-xl font-black">{totalAmount.toFixed(4)} {currency}</span>
+                      {currentPrice > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          ≈ ${(totalAmount * currentPrice).toFixed(2)} USD
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="memo">Memo / Reference (Optional)</Label>
-                <Input id="memo" placeholder="e.g. Oct UI Support" className="rounded-xl" />
+                <Input 
+                  id="memo" 
+                  placeholder="e.g. January Salaries" 
+                  className="rounded-xl"
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                />
               </div>
 
               <div className="pt-4 border-t border-border/50">
                 <div className="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-2xl flex gap-3 mb-6">
                   <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
                   <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                    Executing this payroll will trigger a <b>Stacks Wallet popup</b>. Funds will move directly from your wallet to the recipient on-chain.
+                    Executing this payroll will trigger <b>Stacks Wallet popup(s)</b> for each recipient. Funds will move directly from your wallet to the recipients on-chain.
                   </p>
                 </div>
                 <Button 
                   onClick={handleExecutePayroll}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || selectedRecipients.length === 0}
                   className="w-full h-12 rounded-2xl text-base font-bold shadow-xl shadow-primary/20 bg-primary group"
                 >
                   {isSubmitting ? (
@@ -266,7 +314,10 @@ export default function CreatePayrollPage() {
                   ) : (
                     <Send className="mr-2 h-5 w-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
                   )}
-                  Execute On-Chain Payment
+                  {selectedRecipients.length > 0 
+                    ? `Pay ${selectedRecipients.length} Recipient${selectedRecipients.length > 1 ? 's' : ''} (${totalAmount.toFixed(4)} ${currency})`
+                    : 'Select Recipients to Pay'
+                  }
                 </Button>
               </div>
             </CardContent>
@@ -289,6 +340,14 @@ export default function CreatePayrollPage() {
                 <span className="text-muted-foreground">Available</span>
                 <span className="font-bold">{balance !== null ? `${balance.toLocaleString()} STX` : "--- STX"}</span>
               </div>
+              {selectedRecipients.length > 0 && (
+                <div className="flex justify-between text-primary">
+                  <span>After Payment</span>
+                  <span className="font-bold">
+                    {balance !== null ? `${(balance - totalAmount).toLocaleString(undefined, { maximumFractionDigits: 4 })} STX` : "---"}
+                  </span>
+                </div>
+              )}
               <div className="pt-2 border-t border-border/50">
                 <p className="text-[10px] text-muted-foreground italic text-center">
                   Funds are never held by Payrail. You control your private keys.

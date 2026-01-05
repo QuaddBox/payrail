@@ -53,7 +53,7 @@ const daysOfMonth = Array.from({ length: 28 }, (_, i) => ({
 
 export function CreateScheduleModal({ isOpen, onClose, onSuccess }: CreateScheduleModalProps) {
   const [name, setName] = React.useState("")
-  const [frequency, setFrequency] = React.useState<'weekly' | 'monthly'>('monthly')
+  const [frequency, setFrequency] = React.useState<'minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly'>('monthly')
   const [payDay, setPayDay] = React.useState(1)
   const [startDate, setStartDate] = React.useState("")
   const [endDate, setEndDate] = React.useState("")
@@ -173,46 +173,70 @@ export function CreateScheduleModal({ isOpen, onClose, onSuccess }: CreateSchedu
 
         {/* Frequency Selection */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
+          <div className="space-y-2 col-span-2">
             <Label>Frequency</Label>
-            <div className="flex bg-accent/50 rounded-xl p-1">
+            <div className="flex flex-wrap bg-accent/50 rounded-xl p-1 gap-1">
+              <Button
+                variant={frequency === 'minutes' ? 'default' : 'ghost'}
+                className="flex-1 min-w-[80px] rounded-lg h-10 text-xs font-semibold"
+                onClick={() => setFrequency('minutes')}
+              >
+                Minutes
+              </Button>
+              <Button
+                variant={frequency === 'hourly' ? 'default' : 'ghost'}
+                className="flex-1 min-w-[80px] rounded-lg h-10 text-xs font-semibold"
+                onClick={() => setFrequency('hourly')}
+              >
+                Hourly
+              </Button>
+              <Button
+                variant={frequency === 'daily' ? 'default' : 'ghost'}
+                className="flex-1 min-w-[80px] rounded-lg h-10 text-xs font-semibold"
+                onClick={() => setFrequency('daily')}
+              >
+                Daily
+              </Button>
               <Button
                 variant={frequency === 'weekly' ? 'default' : 'ghost'}
-                className="flex-1 rounded-lg h-10 text-sm font-semibold"
-                onClick={() => { setFrequency('weekly'); setPayDay(5) }} // Default to Friday
+                className="flex-1 min-w-[80px] rounded-lg h-10 text-xs font-semibold"
+                onClick={() => { setFrequency('weekly'); setPayDay(5) }}
               >
-                <Clock className="mr-2 h-4 w-4" />
+                <Clock className="mr-1 h-3 w-3" />
                 Weekly
               </Button>
               <Button
                 variant={frequency === 'monthly' ? 'default' : 'ghost'}
-                className="flex-1 rounded-lg h-10 text-sm font-semibold"
+                className="flex-1 min-w-[80px] rounded-lg h-10 text-xs font-semibold"
                 onClick={() => { setFrequency('monthly'); setPayDay(1) }}
               >
-                <Calendar className="mr-2 h-4 w-4" />
+                <Calendar className="mr-1 h-3 w-3" />
                 Monthly
               </Button>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Pay Day</Label>
-            <Select 
-              value={payDay.toString()} 
-              onValueChange={(val) => setPayDay(parseInt(val))}
-            >
-              <SelectTrigger className="rounded-xl h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="z-[200]">
-                {(frequency === 'weekly' ? daysOfWeek : daysOfMonth).map(day => (
-                  <SelectItem key={day.value} value={day.value.toString()}>
-                    {day.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Only show Pay Day for weekly/monthly */}
+          {(frequency === 'weekly' || frequency === 'monthly') && (
+            <div className="space-y-2 col-span-2">
+              <Label>Pay Day</Label>
+              <Select 
+                value={payDay.toString()} 
+                onValueChange={(val) => setPayDay(parseInt(val))}
+              >
+                <SelectTrigger className="rounded-xl h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="z-[200]">
+                  {(frequency === 'weekly' ? daysOfWeek : daysOfMonth).map(day => (
+                    <SelectItem key={day.value} value={day.value.toString()}>
+                      {day.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         {/* Schedule Duration */}

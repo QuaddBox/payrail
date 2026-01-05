@@ -97,7 +97,7 @@ export async function sendScheduleAddedEmail(recipient: {
   email: string
   scheduleName: string
   amount: number
-  frequency: 'weekly' | 'monthly'
+  frequency: 'minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly'
   nextPayDate: string
   organizationName: string
 }) {
