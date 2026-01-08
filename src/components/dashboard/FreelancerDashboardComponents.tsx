@@ -94,10 +94,10 @@ export function FreelancerEarningsStats() {
                 <stat.icon className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground font-medium">{stat.title}</p>
+                <p className="text-sm text-orange-500 font-medium">{stat.title}</p>
                 <h3 className="text-2xl font-bold mt-0.5 tracking-tight">{stat.value}</h3>
                 {stat.subValue && (
-                  <p className="text-xs text-muted-foreground mt-0.5">{stat.subValue}</p>
+                  <p className="text-xs text-orange-500 mt-0.5">{stat.subValue}</p>
                 )}
               </div>
             </div>

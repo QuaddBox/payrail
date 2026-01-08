@@ -36,11 +36,8 @@ const itemVariants = {
 import { useStacks } from "@/hooks/useStacks"
 
 export function PaymentsClient({ initialTransactions = [] }: { initialTransactions?: any[] }) {
-  const { user } = useAuth()
   const { address: connectedAddress, isConnected, getRecentTransactions, getSTXPrice, getBTCPrice } = useStacks()
-  const supabase = React.useMemo(() => createClient(), [])
   
-  const [storedWalletAddress, setStoredWalletAddress] = React.useState<string | null>(null)
   const [txs, setTxs] = React.useState<any[]>(initialTransactions)
   const [stxPrice, setStxPrice] = React.useState(0)
   const [btcPrice, setBtcPrice] = React.useState(0)
@@ -51,24 +48,9 @@ export function PaymentsClient({ initialTransactions = [] }: { initialTransactio
     setIsMounted(true)
   }, [])
 
-  // Fetch user's stored wallet address from their profile
-  React.useEffect(() => {
-    async function fetchStoredWallet() {
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('wallet_address')
-          .eq('id', user.id)
-          .single()
-        
-        setStoredWalletAddress(profile?.wallet_address || null)
-      }
-    }
-    fetchStoredWallet()
-  }, [user, supabase])
-
-  // Use connected wallet address - either stored or currently connected
-  const effectiveAddress = storedWalletAddress || (isConnected ? connectedAddress : null)
+  // For freelancers (Payments page), use the connected wallet directly
+  // They can use any wallet they want, no need to match a stored one
+  const effectiveAddress = isConnected ? connectedAddress : null
   const hasWallet = !!effectiveAddress
 
   React.useEffect(() => {
@@ -89,7 +71,7 @@ export function PaymentsClient({ initialTransactions = [] }: { initialTransactio
             setIsLoading(false)
         }
     }
-    if (txs.length === 0 || hasWallet) load()
+    load()
   }, [hasWallet, effectiveAddress, getRecentTransactions, getSTXPrice, getBTCPrice])
 
   // Filter for incoming payments (received)
@@ -228,11 +210,11 @@ export function PaymentsClient({ initialTransactions = [] }: { initialTransactio
                 <stat.icon className="h-5 w-5" />
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{stat.title}</p>
+                <p className="text-xs font-bold text-orange-500 uppercase tracking-widest">{stat.title}</p>
                 <div className="flex items-baseline gap-2">
                   <h3 className="text-2xl font-extrabold tracking-tight">{stat.value}</h3>
                 </div>
-                <span className="text-xs text-muted-foreground">{stat.sub}</span>
+                <span className="text-xs text-orange-500">{stat.sub}</span>
               </div>
             </CardContent>
           </Card>
