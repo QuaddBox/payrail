@@ -177,6 +177,30 @@ export async function deleteTeamMember(id: string) {
   return { success: true }
 }
 
+export async function bulkAddTeamMembers(members: any[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return { error: "Not authenticated" }
+
+  // Add organization_id and status to each member
+  const membersToInsert = members.map(member => ({
+    ...member,
+    organization_id: user.id,
+    status: 'Active',
+    email: member.email?.toLowerCase().trim()
+  }))
+
+  const { error } = await supabase
+    .from('team_members')
+    .insert(membersToInsert)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/dashboard/recipients')
+  return { success: true }
+}
+
 export async function recordPayout(id: string, txId?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

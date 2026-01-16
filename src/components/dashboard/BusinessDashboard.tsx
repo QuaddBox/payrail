@@ -51,38 +51,67 @@ function ListSkeleton() {
 }
 
 export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { initialOrgName?: string; initialRecipients?: any[] }) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { isConnected, address, connect, getSTXPrice, MobileModal } = useMobileWallet();
-  const supabase = React.useMemo(() => createClient(), []);
+  const supabaseRef = React.useRef(createClient());
+  const supabase = supabaseRef.current;
   
   const [storedWalletAddress, setStoredWalletAddress] = React.useState<string | null>(null);
-  const [isWalletLoading, setIsWalletLoading] = React.useState(true);
   const [isMounted, setIsMounted] = React.useState(false)
   const [isSendModalOpen, setIsSendModalOpen] = React.useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false)
   const [stxPrice, setStxPrice] = React.useState(0)
+  
+  // Track which user ID we last fetched for - prevents redundant fetches
+  const fetchedForUserIdRef = React.useRef<string | null>(null)
 
-  // Fetch user's stored wallet address from their profile
+  // Fetch user's stored wallet address from their profile - ONCE per user
   React.useEffect(() => {
+    // Wait for auth to load
+    if (authLoading) return
+    
+    const currentUserId = user?.id ?? null
+    
+    // If user logged out, clear the data
+    if (!currentUserId) {
+      fetchedForUserIdRef.current = null
+      setStoredWalletAddress(null)
+      return
+    }
+    
+    // If we already fetched for this user, don't fetch again
+    if (fetchedForUserIdRef.current === currentUserId) {
+      return
+    }
+    
+    // Mark that we're fetching for this user
+    fetchedForUserIdRef.current = currentUserId
+    
     async function fetchStoredWallet() {
-      setIsWalletLoading(true)
-      if (user) {
+      try {
         const { data: profile } = await supabase
           .from('profiles')
           .select('wallet_address')
-          .eq('id', user.id)
+          .eq('id', currentUserId)
           .single()
         
         setStoredWalletAddress(profile?.wallet_address || null)
+      } catch (err) {
+        console.error('Error fetching wallet:', err)
       }
-      setIsWalletLoading(false)
     }
+    
     fetchStoredWallet()
-  }, [user, supabase])
+  }, [user?.id, authLoading, supabase])
 
-  // ALWAYS prioritize stored wallet - only use connected wallet if no stored wallet exists
-  const effectiveAddress = storedWalletAddress || (isConnected && !isWalletLoading ? address : null)
-  const hasWallet = !!effectiveAddress && !isWalletLoading
+  // Compute effective wallet - prioritize stored wallet, fallback to connected wallet
+  const effectiveAddress = storedWalletAddress || (isConnected ? address : null)
+  
+  // hasWallet: true if we have finished loading auth AND we have an address
+  // When auth is loading OR we haven't fetched yet for this user, show the data based on available info
+  const hasWallet = !authLoading && !!effectiveAddress
+
+
   
   // Check if connected wallet mismatches stored wallet (robust comparison)
   const walletMismatch = React.useMemo(() => {
@@ -94,12 +123,21 @@ export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { 
 
   React.useEffect(() => {
     setIsMounted(true)
+  }, [])
+
+  // Fetch STX price once on mount
+  React.useEffect(() => {
+    let cancelled = false
     const fetchPrice = async () => {
-        const price = await getSTXPrice()
+      const price = await getSTXPrice()
+      if (!cancelled) {
         setStxPrice(price)
+      }
     }
     fetchPrice()
-  }, [getSTXPrice])
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Run only once on mount
 
   const totalMonthlyUSD = initialRecipients.reduce((acc, curr) => acc + (parseFloat(curr.rate) || 0), 0)
   const estimatedSTX = stxPrice > 0 ? (totalMonthlyUSD / stxPrice).toFixed(2) : "0"
@@ -124,7 +162,7 @@ export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { 
                   "text-[8px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0",
                   hasWallet ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
                 )}>
-                  {hasWallet ? <ShieldCheck className="h-2.5 w-2.5 sm:h-3 w-3" /> : <Clock className="h-2.5 w-2.5 sm:h-3 w-3" />}
+                  {hasWallet ? <ShieldCheck className="h-2.5 sm:h-3 w-3" /> : <Clock className="h-2.5 sm:h-3 w-3" />}
                   {hasWallet ? "On-Chain Verified" : "Wallet Not Connected"}
                 </span>
               )}
@@ -133,7 +171,7 @@ export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { 
               <span className="text-xs sm:text-sm font-medium">{initialOrgName || user?.user_metadata?.organization || "My Organization"}</span>
               <span className="text-xs opacity-50">•</span>
               {!isMounted ? (
-                <div className="h-4 w-20 sm:h-5 w-24 bg-accent/50 animate-pulse rounded-lg" />
+                <div className="h-4 w-20 sm:h-5 bg-accent/50 animate-pulse rounded-lg" />
               ) : (
               <code className="text-[10px] sm:text-xs bg-accent/50 px-1.5 sm:px-2 py-0.5 rounded-lg border border-border/50 font-mono">
                   {storedWalletAddress ? `${storedWalletAddress.substring(0, 5)}...${storedWalletAddress.substring(storedWalletAddress.length - 4)}` : (isConnected && address ? `${address.substring(0, 5)}...${address.slice(-4)}` : "----")}
@@ -162,7 +200,7 @@ export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { 
                   className="flex-1 md:flex-none rounded-xl h-10 px-4 sm:px-6 font-semibold text-xs sm:text-sm whitespace-nowrap"
                   onClick={() => setIsSendModalOpen(true)}
               >
-                <Send className="mr-2 h-3.5 w-3.5 sm:h-4 w-4" />
+                <Send className="mr-2 h-3.5 w-3.5 sm:h-4" />
                 Transfer
               </Button>
               <Button 
@@ -170,7 +208,7 @@ export function BusinessDashboard({ initialOrgName, initialRecipients = [] }: { 
                   className="flex-1 md:flex-none rounded-xl h-10 px-4 sm:px-6 font-bold shadow-lg shadow-primary/20 text-xs sm:text-sm whitespace-nowrap"
                   onClick={() => setIsAddModalOpen(true)}
               >
-                <Plus className="mr-2 h-3.5 w-3.5 sm:h-4 w-4" />
+                <Plus className="mr-2 h-3.5 w-3.5 sm:h-4" />
                 Add Recipient
               </Button>
             </div>

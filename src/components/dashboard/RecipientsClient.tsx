@@ -9,7 +9,10 @@ import {
   Trash2,
   Edit2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Filter,
+  Download,
+  Upload
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -23,6 +26,15 @@ import { useRouter } from "next/navigation"
 import { RecipientDetailsModal } from "./RecipientDetailsModal"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { History as HistoryIcon } from "lucide-react"
+import { BulkImportModal } from "./BulkImportModal"
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu"
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -47,6 +59,10 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
   const [editingMember, setEditingMember] = React.useState<any>(null)
   const [trackingRecipient, setTrackingRecipient] = React.useState<any>(null)
   const [currentPage, setCurrentPage] = React.useState(1)
+  const [statusFilter, setStatusFilter] = React.useState<string>("all")
+  const [roleFilter, setRoleFilter] = React.useState<string>("all")
+  const [isImportModalOpen, setIsImportModalOpen] = React.useState(false)
+  
   const itemsPerPage = 5
   const { showNotification } = useNotification()
   const router = useRouter()
@@ -81,10 +97,55 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
     }
   }
 
-  const filteredRecipients = initialRecipients.filter(f => 
-    f.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    (f.email && f.email.toLowerCase().includes(searchQuery.toLowerCase()))
-  )
+  const filteredRecipients = initialRecipients.filter(f => {
+    const matchesSearch = f.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (f.email && f.email.toLowerCase().includes(searchQuery.toLowerCase()))
+    
+    const matchesStatus = statusFilter === "all" || f.status === statusFilter
+    const matchesRole = roleFilter === "all" || f.role === roleFilter
+
+    return matchesSearch && matchesStatus && matchesRole
+  })
+
+  // Get unique roles for filtering
+  const uniqueRoles = React.useMemo(() => {
+    const roles = initialRecipients.map(r => r.role).filter(Boolean)
+    return Array.from(new Set(roles))
+  }, [initialRecipients])
+
+  const handleExport = () => {
+    if (filteredRecipients.length === 0) {
+      showNotification("info", "No data", "There is no data to export.")
+      return
+    }
+
+    const headers = ["Name", "Role", "Email", "Wallet Address", "BTC Address", "Rate", "Frequency", "Status"]
+    const csvContent = [
+      headers.join(","),
+      ...filteredRecipients.map(r => [
+        `"${r.name}"`,
+        `"${r.role || ''}"`,
+        `"${r.email || ''}"`,
+        `"${r.wallet_address}"`,
+        `"${r.btc_address || ''}"`,
+        `"${r.rate || ''}"`,
+        `"${r.payment_frequency}"`,
+        `"${r.status}"`
+      ].join(","))
+    ].join("\n")
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.setAttribute("href", url)
+    link.setAttribute("download", `recipients_export_${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = "hidden"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    showNotification("success", "Exported", "Recipients data exported successfully.")
+  }
 
   const totalPages = Math.ceil(filteredRecipients.length / itemsPerPage)
   const paginatedRecipients = filteredRecipients.slice(
@@ -104,11 +165,29 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
           <h1 className="text-3xl font-bold tracking-tight">Payout Recipients</h1>
           <p className="text-muted-foreground mt-1">Manage your employees, contractors, and their payment details.</p>
         </div>
-        <Button onClick={() => setIsAddModalOpen(true)} className="rounded-xl shadow-lg shadow-primary/20">
-          <Plus className="mr-2 h-4 w-4" />
-          Add Recipient
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            onClick={() => setIsImportModalOpen(true)} 
+            className="rounded-xl border-dashed"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Import CSV
+          </Button>
+          <Button onClick={() => setIsAddModalOpen(true)} className="rounded-xl shadow-lg shadow-primary/20">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Recipient
+          </Button>
+        </div>
       </motion.div>
+
+      <BulkImportModal 
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false)
+          router.refresh()
+        }}
+      />
 
       <AddTeamMemberModal 
         isOpen={isAddModalOpen || !!editingMember} 
@@ -140,8 +219,44 @@ export function RecipientsClient({ initialRecipients }: { initialRecipients: any
                 />
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="rounded-lg">Filter</Button>
-                <Button variant="outline" size="sm" className="rounded-lg">Export</Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="rounded-lg h-10 px-4">
+                      <Filter className="mr-2 h-4 w-4" />
+                      Filter
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 z-50">
+                    <DropdownMenuLabel>Status</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => setStatusFilter("all")} className={cn(statusFilter === "all" && "bg-primary/10 font-bold")}>All Statuses</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setStatusFilter("Active")} className={cn(statusFilter === "Active" && "bg-primary/10 font-bold")}>Active</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setStatusFilter("Inactive")} className={cn(statusFilter === "Inactive" && "bg-primary/10 font-bold")}>Inactive</DropdownMenuItem>
+                    
+                    <DropdownMenuSeparator />
+                    
+                    <DropdownMenuLabel>Role</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => setRoleFilter("all")} className={cn(roleFilter === "all" && "bg-primary/10 font-bold")}>All Roles</DropdownMenuItem>
+                    {uniqueRoles.map(role => (
+                      <DropdownMenuItem 
+                        key={role} 
+                        onClick={() => setRoleFilter(role)}
+                        className={cn(roleFilter === role && "bg-primary/10 font-bold")}
+                      >
+                        {role}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleExport}
+                  className="rounded-lg h-10 px-4"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Export
+                </Button>
               </div>
             </div>
           </CardHeader>
