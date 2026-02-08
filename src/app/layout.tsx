@@ -15,8 +15,34 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Payrail | STX Payroll",
-  description: "Non-custodial payroll engine for the Stacks blockchain.",
+  title: "Payrail | The Decentralized Payroll Engine",
+  description:
+    "Non-custodial, high-performance payroll infrastructure for global teams on Bitcoin & Stacks.",
+  openGraph: {
+    title: "Payrail | The Decentralized Payroll Engine",
+    description:
+      "Execute payroll in BTC & STX directly from your wallet. Non-custodial, secure, and fast.",
+    url: "https://payrail.app", // User: Replace with your actual domain
+    siteName: "Payrail",
+    images: [
+      {
+        url: "/opengraph-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Payrail - Decentralized Payroll",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Payrail | The Decentralized Payroll Engine",
+    description: "Non-custodial payroll for the Bitcoin ecosystem.",
+    images: ["/opengraph-image.png"],
+    creator: "@payrail",
+  },
+  metadataBase: new URL("https://payrail.app"), // User: Replace with your actual domain
 };
 
 export default function RootLayout({
@@ -30,9 +56,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
-          <NotificationProvider>
-            {children}
-          </NotificationProvider>
+          <NotificationProvider>{children}</NotificationProvider>
         </Providers>
       </body>
     </html>

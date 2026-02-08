@@ -181,7 +181,7 @@ Payrail represents a shift from "Financial Services" to "Financial Software."
 
 ---
 
-## �️ Evolution Roadmap
+## ️ Evolution Roadmap
 
 ### **Phase 1: Foundation (Q1 2026 - Current)**
 
@@ -189,6 +189,7 @@ Payrail represents a shift from "Financial Services" to "Financial Software."
 - [x] **Batching Engine**: Support for up to 20 recipients in a single atomic transaction.
 - [x] **Management Dashboard**: Secure organization and recipient management via Supabase.
 - [x] **Real-time Price Feeds**: Integration with CoinGecko for BTC/STX price parity.
+- [x] **User Interface Design Overhaul and Rebranding**: Complete user interface design overhaul and premium rebranding.
 
 ### **Phase 2: Advanced Commerce (Q2 2026)**
 
