@@ -148,7 +148,7 @@ Team management (names, roles, rates) is handled via **Next.js Server Actions** 
 
 ```bash
 # Clone the repository
-git clone https://github.com/Wutche/payrail.git
+git clone https://github.com/QuaddBox/payrail.git
 cd payrail
 
 # Install premium dependencies
