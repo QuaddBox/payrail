@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     title: "Payrail | The Decentralized Payroll Engine",
     description:
       "Execute payroll in BTC & STX directly from your wallet. Non-custodial, secure, and fast.",
-    url: "https://payrail.app", // User: Replace with your actual domain
+    url: "https://payrail-six.vercel.app",
     siteName: "Payrail",
     images: [
       {
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     images: ["/opengraph-image.png"],
     creator: "@payrail",
   },
-  metadataBase: new URL("https://payrail.app"), // User: Replace with your actual domain
+  metadataBase: new URL("https://payrail-six.vercel.app"),
 };
 
 export default function RootLayout({
