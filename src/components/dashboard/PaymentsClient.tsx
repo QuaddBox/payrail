@@ -1,135 +1,181 @@
-'use client'
+"use client";
 
-import * as React from "react"
-import { 
-  Wallet, 
-  ArrowDownLeft, 
+import * as React from "react";
+import {
+  Wallet,
+  ArrowDownLeft,
   Download,
   Calendar,
-  Building2
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
-import { motion } from "framer-motion"
-import { DataTable } from "@/components/dashboard/DataTable"
-import { useAuth } from "@/hooks/useAuth"
-import { createClient } from "@/lib/supabase"
+  Building2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+import { DataTable } from "@/components/dashboard/DataTable";
+import { useAuth } from "@/hooks/useAuth";
+import { createClient } from "@/lib/supabase";
 
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.1 }
-  }
-}
+    transition: { staggerChildren: 0.1 },
+  },
+};
 
 const itemVariants = {
   hidden: { y: 20, opacity: 0 },
   visible: {
     y: 0,
     opacity: 1,
-    transition: { type: "spring" as const, stiffness: 100, damping: 15 }
-  }
-}
+    transition: { type: "spring" as const, stiffness: 100, damping: 15 },
+  },
+};
 
-import { useStacks } from "@/hooks/useStacks"
+import { useStacks } from "@/hooks/useStacks";
 
-export function PaymentsClient({ initialTransactions = [] }: { initialTransactions?: any[] }) {
-  const { address: connectedAddress, isConnected, getRecentTransactions, getSTXPrice, getBTCPrice } = useStacks()
-  
-  const [txs, setTxs] = React.useState<any[]>(initialTransactions)
-  const [stxPrice, setStxPrice] = React.useState(0)
-  const [btcPrice, setBtcPrice] = React.useState(0)
-  const [isLoading, setIsLoading] = React.useState(txs.length === 0)
-  const [isMounted, setIsMounted] = React.useState(false)
+export function PaymentsClient({
+  initialTransactions = [],
+}: {
+  initialTransactions?: any[];
+}) {
+  const {
+    address: connectedAddress,
+    isConnected,
+    getRecentTransactions,
+    getSTXPrice,
+    getBTCPrice,
+  } = useStacks();
+
+  const [txs, setTxs] = React.useState<any[]>(initialTransactions);
+  const [stxPrice, setStxPrice] = React.useState(0);
+  const [btcPrice, setBtcPrice] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(txs.length === 0);
+  const [isMounted, setIsMounted] = React.useState(false);
 
   React.useEffect(() => {
-    setIsMounted(true)
-  }, [])
+    setIsMounted(true);
+  }, []);
 
   // For freelancers (Payments page), use the connected wallet directly
   // They can use any wallet they want, no need to match a stored one
-  const effectiveAddress = isConnected ? connectedAddress : null
-  const hasWallet = !!effectiveAddress
+  const effectiveAddress = isConnected ? connectedAddress : null;
+  const hasWallet = !!effectiveAddress;
 
   React.useEffect(() => {
     async function load() {
-        if (hasWallet && effectiveAddress) {
-            setIsLoading(true)
-            const [data, sPrice, bPrice] = await Promise.all([
-                getRecentTransactions(effectiveAddress),
-                getSTXPrice(),
-                getBTCPrice()
-            ])
-            setTxs(data || [])
-            setStxPrice(sPrice)
-            setBtcPrice(bPrice)
-            setIsLoading(false)
-        } else {
-            setTxs([])
-            setIsLoading(false)
-        }
+      if (hasWallet && effectiveAddress) {
+        setIsLoading(true);
+        const [data, sPrice, bPrice] = await Promise.all([
+          getRecentTransactions(effectiveAddress),
+          getSTXPrice(),
+          getBTCPrice(),
+        ]);
+        setTxs(data || []);
+        setStxPrice(sPrice);
+        setBtcPrice(bPrice);
+        setIsLoading(false);
+      } else {
+        setTxs([]);
+        setIsLoading(false);
+      }
     }
-    load()
-  }, [hasWallet, effectiveAddress, getRecentTransactions, getSTXPrice, getBTCPrice])
+    load();
+  }, [
+    hasWallet,
+    effectiveAddress,
+    getRecentTransactions,
+    getSTXPrice,
+    getBTCPrice,
+  ]);
 
   // Filter for incoming payments (received)
-  const incomingTransactions = txs.filter(tx => tx.sender_address !== effectiveAddress)
+  const incomingTransactions = txs.filter(
+    (tx) => tx.sender_address !== effectiveAddress,
+  );
 
-  const incomingPayments = incomingTransactions.map(tx => {
-    const amountSTX = Number(tx.stx_received || tx.token_transfer?.amount || 0) / 1_000_000
+  const incomingPayments = incomingTransactions.map((tx) => {
+    const amountSTX =
+      Number(tx.stx_received || tx.token_transfer?.amount || 0) / 1_000_000;
     return {
       id: tx.tx_id,
-      from: tx.sender_address.substring(0, 10) + '...',
-      project: tx.tx_type === 'smart_contract' ? (tx.contract_call?.function_name || 'Payment') : 'Transfer',
+      from: tx.sender_address.substring(0, 10) + "...",
+      project:
+        tx.tx_type === "smart_contract"
+          ? tx.contract_call?.function_name || "Payment"
+          : "Transfer",
       amount: `${amountSTX.toLocaleString()} STX`,
       date: new Date(tx.burn_block_time * 1000).toLocaleDateString(),
-      status: tx.tx_status === 'success' ? 'Success' : 'Pending',
-      fiat: `~$${(amountSTX * stxPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    }
-  })
+      status: tx.tx_status === "success" ? "Success" : "Pending",
+      fiat: `~$${(amountSTX * stxPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    };
+  });
 
-  const totalRevenueSTX = incomingTransactions.reduce((acc, tx) => acc + (Number(tx.stx_received || tx.token_transfer?.amount || 0) / 1_000_000), 0)
+  const totalRevenueSTX = incomingTransactions.reduce(
+    (acc, tx) =>
+      acc +
+      Number(tx.stx_received || tx.token_transfer?.amount || 0) / 1_000_000,
+    0,
+  );
 
   // Download Earnings Report as CSV
   const downloadEarningsReport = () => {
     if (incomingPayments.length === 0) return;
-    
-    const headers = ['Sender', 'Reference', 'Status', 'Amount', 'Fiat Estimate', 'Date'];
-    const csvRows = [
-      headers.join(','),
-      ...incomingPayments.map(p => [
-        `"${p.from}"`,
-        `"${p.project}"`,
-        `"${p.status}"`,
-        `"${p.amount}"`,
-        `"${p.fiat}"`,
-        `"${p.date}"`
-      ].join(','))
+
+    const headers = [
+      "Sender",
+      "Reference",
+      "Status",
+      "Amount",
+      "Fiat Estimate",
+      "Date",
     ];
-    
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const csvRows = [
+      headers.join(","),
+      ...incomingPayments.map((p) =>
+        [
+          `"${p.from}"`,
+          `"${p.project}"`,
+          `"${p.status}"`,
+          `"${p.amount}"`,
+          `"${p.fiat}"`,
+          `"${p.date}"`,
+        ].join(","),
+      ),
+    ];
+
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    link.download = `payrail-earnings-report-${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `payrail-earnings-report-${new Date().toISOString().split("T")[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
-  if (!isMounted) return null
+  if (!isMounted) return null;
 
   // Show not connected state
   if (!hasWallet) {
     return (
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Incoming Payments</h1>
-          <p className="text-muted-foreground mt-1">Detailed record of Bitcoin & STX received for your services.</p>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Incoming Payments
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Detailed record of Bitcoin & STX received for your services.
+          </p>
         </div>
         <Card className="border-none shadow-sm">
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
@@ -143,85 +189,105 @@ export function PaymentsClient({ initialTransactions = [] }: { initialTransactio
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
   return (
-    <motion.div 
+    <motion.div
       className="space-y-8"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
-      <motion.div className="flex flex-col md:flex-row md:items-center justify-between gap-4" variants={itemVariants}>
+      <motion.div
+        className="flex flex-col md:flex-row md:items-center justify-between gap-4"
+        variants={itemVariants}
+      >
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Incoming Payments</h1>
-          <p className="text-muted-foreground mt-1">Detailed record of Bitcoin & STX received for your services.</p>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Incoming Payments
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Detailed record of Bitcoin & STX received for your services.
+          </p>
         </div>
         <div className="flex items-center gap-2">
-           <Button 
-             variant="outline" 
-             size="sm" 
-             className="rounded-xl"
-             onClick={downloadEarningsReport}
-             disabled={incomingPayments.length === 0}
-           >
-             <Download className="mr-2 h-4 w-4" />
-             Earnings Report
-           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-xl"
+            onClick={downloadEarningsReport}
+            disabled={incomingPayments.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Earnings Report
+          </Button>
         </div>
       </motion.div>
 
-       {/* Stats Grid */}
-       <motion.div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" variants={itemVariants}>
-         {[
-           { 
-             title: "Total Revenue", 
-             value: `${totalRevenueSTX.toLocaleString()} STX`, 
-             sub: stxPrice > 0 ? `≈ $${(totalRevenueSTX * stxPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "All time", 
-             icon: Wallet, 
-             color: "text-green-600 bg-green-100 dark:bg-green-950/30" 
-           },
-           { 
-             title: "Avg. Payment", 
-             value: `${(incomingPayments.length > 0 ? totalRevenueSTX / incomingPayments.length : 0).toFixed(2)} STX`, 
-             sub: stxPrice > 0 && incomingPayments.length > 0 ? `≈ $${((totalRevenueSTX / incomingPayments.length) * stxPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Per project", 
-             icon: ArrowDownLeft, 
-             color: "text-blue-600 bg-blue-100 dark:bg-blue-950/30" 
-           },
-           { 
-             title: "Total USD", 
-             value: `$${(totalRevenueSTX * stxPrice).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, 
-             sub: "Market value", 
-             icon: Building2, 
-             color: "text-purple-600 bg-purple-100 dark:bg-purple-950/30" 
-           },
-           { 
-             title: "Payments", 
-             value: incomingPayments.length.toString(), 
-             sub: "Total count", 
-             icon: Calendar, 
-             color: "text-orange-600 bg-orange-100 dark:bg-orange-950/30" 
-           },
-         ].map((stat, i) => (
+      {/* Stats Grid */}
+      <motion.div
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+        variants={itemVariants}
+      >
+        {[
+          {
+            title: "Total Revenue",
+            value: `${totalRevenueSTX.toLocaleString()} STX`,
+            sub:
+              stxPrice > 0
+                ? `≈ $${(totalRevenueSTX * stxPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : "All time",
+            icon: Wallet,
+            color: "text-green-600 bg-green-100 dark:bg-green-950/30",
+          },
+          {
+            title: "Avg. Payment",
+            value: `${(incomingPayments.length > 0 ? totalRevenueSTX / incomingPayments.length : 0).toFixed(2)} STX`,
+            sub:
+              stxPrice > 0 && incomingPayments.length > 0
+                ? `≈ $${((totalRevenueSTX / incomingPayments.length) * stxPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : "Per project",
+            icon: ArrowDownLeft,
+            color: "text-blue-600 bg-blue-100 dark:bg-blue-950/30",
+          },
+          {
+            title: "Total USD",
+            value: `$${(totalRevenueSTX * stxPrice).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+            sub: "Market value",
+            icon: Building2,
+            color: "text-purple-600 bg-purple-100 dark:bg-purple-950/30",
+          },
+          {
+            title: "Payments",
+            value: incomingPayments.length.toString(),
+            sub: "Total count",
+            icon: Calendar,
+            color: "text-orange-600 bg-orange-100 dark:bg-orange-950/30",
+          },
+        ].map((stat, i) => (
           <Card key={i} className="border-none shadow-sm">
             <CardContent className="p-5 flex flex-col justify-between h-full">
               <div className={cn("p-2.5 rounded-xl w-fit mb-4", stat.color)}>
                 <stat.icon className="h-5 w-5" />
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-bold text-orange-500 uppercase tracking-widest">{stat.title}</p>
+                <p className="text-xs font-bold text-orange-500 uppercase tracking-widest">
+                  {stat.title}
+                </p>
                 <div className="flex items-baseline gap-2">
-                  <h3 className="text-2xl font-extrabold tracking-tight">{stat.value}</h3>
+                  <h3 className="text-2xl font-extrabold tracking-tight">
+                    {stat.value}
+                  </h3>
                 </div>
                 <span className="text-xs text-orange-500">{stat.sub}</span>
               </div>
             </CardContent>
           </Card>
-         ))}
-       </motion.div>
+        ))}
+      </motion.div>
 
-       <motion.div variants={itemVariants}>
+      <motion.div variants={itemVariants}>
         <Card className="border-none shadow-sm h-full">
           <CardHeader className="flex flex-row items-center justify-between pb-6">
             <div>
@@ -230,24 +296,32 @@ export function PaymentsClient({ initialTransactions = [] }: { initialTransactio
             </div>
           </CardHeader>
           <CardContent>
-            <DataTable 
+            <DataTable
               data={incomingPayments}
               pageSize={5}
+              isLoading={isLoading}
               columns={[
                 {
                   header: "Sender",
                   accessorKey: (p: any) => (
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-full bg-accent flex items-center justify-center font-bold text-[10px]">
-                        {p.from.split(' ').map((n: string) => n[0]).join('')}
+                        {p.from
+                          .split(" ")
+                          .map((n: string) => n[0])
+                          .join("")}
                       </div>
-                      <span className="font-semibold group-hover:text-primary transition-colors">{p.from}</span>
+                      <span className="font-semibold group-hover:text-primary transition-colors">
+                        {p.from}
+                      </span>
                     </div>
-                  )
+                  ),
                 },
                 {
                   header: "Reference",
-                  accessorKey: (p: any) => <span className="text-muted-foreground">{p.project}</span>
+                  accessorKey: (p: any) => (
+                    <span className="text-muted-foreground">{p.project}</span>
+                  ),
                 },
                 {
                   header: "Status",
@@ -255,22 +329,30 @@ export function PaymentsClient({ initialTransactions = [] }: { initialTransactio
                     <span className="px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-950/30">
                       {p.status}
                     </span>
-                  )
+                  ),
                 },
                 {
                   header: "Amount",
-                  accessorKey: (p: any) => <span className="font-mono font-bold text-green-600">+{p.amount}</span>
+                  accessorKey: (p: any) => (
+                    <span className="font-mono font-bold text-green-600">
+                      +{p.amount}
+                    </span>
+                  ),
                 },
                 {
                   header: "Fiat Estimate",
                   className: "text-right",
-                  accessorKey: (p: any) => <span className="font-medium opacity-60 italic">{p.fiat}</span>
-                }
+                  accessorKey: (p: any) => (
+                    <span className="font-medium opacity-60 italic">
+                      {p.fiat}
+                    </span>
+                  ),
+                },
               ]}
             />
           </CardContent>
         </Card>
-       </motion.div>
+      </motion.div>
     </motion.div>
-  )
+  );
 }

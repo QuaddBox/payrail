@@ -11,11 +11,15 @@
 (define-constant ERR-INVALID-AMOUNT (err u105))
 (define-constant ERR-LIST-MISMATCH (err u106))
 (define-constant ERR-TRANSFER-FAILED (err u107))
+(define-constant ERR-DELEGATE-NOT-FOUND (err u108))
 
 ;; Data Maps
 (define-map businesses principal { registered: bool, org-id: (optional uint) })
 (define-map organizations uint { owner: principal, name: (string-ascii 64) })
 (define-map freelancer-registry principal { registered: bool })
+
+;; Delegate authorization: allows business owners to authorize other wallets for transactions
+(define-map delegates { owner: principal, delegate: principal } { authorized: bool })
 
 ;; Data Vars
 (define-data-var last-org-id uint u0)
@@ -32,6 +36,15 @@
 
 (define-read-only (is-freelancer-registered (freelancer principal))
   (default-to false (get registered (map-get? freelancer-registry freelancer)))
+)
+
+;; Check if a wallet is authorized to act on behalf of a business owner
+;; Returns true if caller is the owner OR an authorized delegate
+(define-read-only (is-authorized (owner principal) (caller principal))
+  (if (is-eq owner caller)
+    true
+    (default-to false (get authorized (map-get? delegates { owner: owner, delegate: caller })))
+  )
 )
 
 ;; --- Public Functions ---
@@ -63,6 +76,23 @@
 ;; Register a freelancer (simple registry for MVP validation)
 (define-public (register-freelancer)
   (ok (map-set freelancer-registry tx-sender { registered: true }))
+)
+
+;; Authorize a delegate wallet to execute payroll on behalf of the caller's organization
+(define-public (authorize-delegate (delegate principal))
+  (let (
+    (caller tx-sender)
+    (business (unwrap! (get-business-info caller) ERR-NOT-REGISTERED))
+  )
+    ;; Caller must own an organization
+    (asserts! (is-some (get org-id business)) ERR-NOT-AUTHORIZED)
+    (ok (map-set delegates { owner: caller, delegate: delegate } { authorized: true }))
+  )
+)
+
+;; Revoke a delegate's authorization
+(define-public (revoke-delegate (delegate principal))
+  (ok (map-delete delegates { owner: tx-sender, delegate: delegate }))
 )
 
 ;; Execute Payroll (STX Transfer)
@@ -100,27 +130,35 @@
 )
 
 ;; Execute Batch Payroll (up to 20 recipients in one transaction)
+;; Supports delegate execution: if on-behalf-of is provided, caller must be authorized
 (define-public (execute-batch-payroll 
   (recipients (list 20 {to: principal, ustx: uint}))
-  (period-ref (string-ascii 32)))
+  (period-ref (string-ascii 32))
+  (on-behalf-of (optional principal)))
   (let (
     (caller tx-sender)
-    (business (unwrap! (get-business-info caller) ERR-NOT-REGISTERED))
+    ;; If on-behalf-of is provided, use that as the business owner; otherwise use caller
+    (owner (default-to caller on-behalf-of))
+    (business (unwrap! (get-business-info owner) ERR-NOT-REGISTERED))
     (count (len recipients))
   )
-    ;; 1. Verify caller owns an organization
+    ;; 1. Verify caller is owner OR authorized delegate
+    (asserts! (is-authorized owner caller) ERR-NOT-AUTHORIZED)
+    
+    ;; 2. Verify owner has an organization
     (asserts! (is-some (get org-id business)) ERR-NOT-AUTHORIZED)
     
-    ;; 2. Verify list is not empty
+    ;; 3. Verify list is not empty
     (asserts! (> count u0) ERR-INVALID-AMOUNT)
     
-    ;; 3. Execute all transfers using fold (atomic - all or nothing)
+    ;; 4. Execute all transfers using fold (atomic - all or nothing)
     (try! (fold process-single-payment recipients (ok true)))
     
-    ;; 4. Emit batch event
+    ;; 5. Emit batch event
     (print { 
       event: "batch-payroll", 
-      payer: caller, 
+      payer: caller,
+      owner: owner,
       recipient-count: count,
       period: period-ref 
     })
@@ -128,4 +166,5 @@
     (ok true)
   )
 )
+
 
