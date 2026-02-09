@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
 import {
   Table,
   TableBody,
@@ -8,27 +8,43 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface DataTableProps<T> {
   columns: {
-    header: string
-    accessorKey: keyof T | ((row: T) => React.ReactNode)
-    className?: string
-  }[]
-  data: T[]
-  pageSize?: number
+    header: string;
+    accessorKey: keyof T | ((row: T) => React.ReactNode);
+    className?: string;
+  }[];
+  data: T[];
+  pageSize?: number;
+  isLoading?: boolean;
 }
 
-export function DataTable<T>({ columns, data, pageSize = 5 }: DataTableProps<T>) {
-  const [currentPage, setCurrentPage] = React.useState(1)
-  
-  const totalPages = Math.ceil(data.length / pageSize)
-  const startIndex = (currentPage - 1) * pageSize
-  const endIndex = startIndex + pageSize
-  const currentData = data.slice(startIndex, endIndex)
+export function DataTable<T>({
+  columns,
+  data,
+  pageSize = 5,
+  isLoading = false,
+}: DataTableProps<T>) {
+  const [currentPage, setCurrentPage] = React.useState(1);
+
+  const totalPages = Math.ceil(data.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const currentData = data.slice(startIndex, endIndex);
+
+  const SkeletonRow = () => (
+    <TableRow className="hover:bg-transparent">
+      {columns.map((column, idx) => (
+        <TableCell key={idx} className={column.className}>
+          <div className="h-4 bg-accent/30 animate-pulse rounded-md w-full" />
+        </TableCell>
+      ))}
+    </TableRow>
+  );
 
   return (
     <div className="space-y-4">
@@ -45,13 +61,20 @@ export function DataTable<T>({ columns, data, pageSize = 5 }: DataTableProps<T>)
               </TableRow>
             </TableHeader>
             <TableBody>
-              {currentData.length > 0 ? (
+              {isLoading ? (
+                Array.from({ length: pageSize }).map((_, i) => (
+                  <SkeletonRow key={i} />
+                ))
+              ) : currentData.length > 0 ? (
                 currentData.map((row, rowIdx) => (
-                  <TableRow key={rowIdx} className="group hover:bg-accent/30 transition-colors">
+                  <TableRow
+                    key={rowIdx}
+                    className="group hover:bg-accent/30 transition-colors"
+                  >
                     {columns.map((column, colIdx) => (
                       <TableCell key={colIdx} className={column.className}>
-                        {typeof column.accessorKey === 'function' 
-                          ? column.accessorKey(row) 
+                        {typeof column.accessorKey === "function"
+                          ? column.accessorKey(row)
                           : (row[column.accessorKey] as React.ReactNode)}
                       </TableCell>
                     ))}
@@ -59,7 +82,10 @@ export function DataTable<T>({ columns, data, pageSize = 5 }: DataTableProps<T>)
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                  <TableCell
+                    colSpan={columns.length}
+                    className="h-24 text-center text-muted-foreground"
+                  >
                     No results found.
                   </TableCell>
                 </TableRow>
@@ -72,14 +98,18 @@ export function DataTable<T>({ columns, data, pageSize = 5 }: DataTableProps<T>)
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-2">
           <p className="text-xs text-muted-foreground font-medium">
-            Showing <span className="text-foreground">{startIndex + 1}</span> to <span className="text-foreground">{Math.min(endIndex, data.length)}</span> of <span className="text-foreground">{data.length}</span> results
+            Showing <span className="text-foreground">{startIndex + 1}</span> to{" "}
+            <span className="text-foreground">
+              {Math.min(endIndex, data.length)}
+            </span>{" "}
+            of <span className="text-foreground">{data.length}</span> results
           </p>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="icon"
               className="h-8 w-8 rounded-lg"
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -101,7 +131,9 @@ export function DataTable<T>({ columns, data, pageSize = 5 }: DataTableProps<T>)
               variant="outline"
               size="icon"
               className="h-8 w-8 rounded-lg"
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              onClick={() =>
+                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+              }
               disabled={currentPage === totalPages}
             >
               <ChevronRight className="h-4 w-4" />
@@ -110,5 +142,5 @@ export function DataTable<T>({ columns, data, pageSize = 5 }: DataTableProps<T>)
         </div>
       )}
     </div>
-  )
+  );
 }

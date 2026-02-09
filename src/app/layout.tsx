@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { NotificationProvider } from "@/components/NotificationProvider";
+import { PageLoader } from "@/components/PageLoader";
+import * as React from "react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -56,7 +58,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
-          <NotificationProvider>{children}</NotificationProvider>
+          <NotificationProvider>
+            <React.Suspense fallback={null}>
+              <PageLoader />
+            </React.Suspense>
+            {children}
+          </NotificationProvider>
         </Providers>
       </body>
     </html>
